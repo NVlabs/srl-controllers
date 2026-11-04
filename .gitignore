@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NVIDIA-2022-03-22
+
+#######################################################
+# KEEP ITEMS IN ALPHABETICAL ORDER WITHIN THEIR GROUP #
+#######################################################
+
+# Temporary and binary files
+*~
+*.log
+*.pot
+*.py[cod]
+*.orig
+*.so
+*.stamp
+*.swp
+.DS_Store
+.cache/*
+__pycache__/*
+wip/*
+**/.ipynb_checkpoints/*
+**/.thumbs/*
+
+# Project files
+.claude/settings.local.json
+.cursor
+.dmypy.json
+.idea
+.project
+.pydevproject
+.ropeproject
+.settings
+.vscode
+tags
+
+# Package files
+*.egg
+*.eggs/
+*.egg-info
+.installed.cfg
+
+# Unittest and coverage
+htmlcov/*
+.coverage
+.coverage.*
+.tox
+junit*.xml
+coverage.xml
+.pytest_cache/
+
+# Build and docs folder/files
+**/.pybuild/*
+_build/*
+_coverage/*
+build/*
+cover/*
+debian/*
+dist/*
+docs/_api/*
+docs/_rst/*
+docs/_build/*
+ros2_ws/*
+sdist/*
+MANIFEST
+*.obj-*-gnu
+
+# Per-project virtualenvs
+.venv*/
+.conda*/
+venv*/*
+
+# Jupyter files
+*checkpoint.ipynb

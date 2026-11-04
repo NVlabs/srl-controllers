@@ -1,0 +1,328 @@
+/**
+ * SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-License-Identifier: LicenseRef-NVIDIA-2022-03-22
+ *
+ * @file example_specs.cpp
+ * @brief Typed physical-robot and Isaac Lab example registry.
+ */
+
+#include "nvidia/srl/controllers/example_specs.hpp"
+
+#include <array>
+#include <cstddef>
+#include <cstring>
+
+namespace nvidia {
+namespace srl {
+namespace controllers {
+namespace {
+
+constexpr double kOneKilohertz = 0.001;
+constexpr double kFiveHundredHertz = 0.002;
+constexpr double kDefaultDuration = 10.0;
+
+constexpr std::array<ControllerExampleSpec, 22> kSpecs{{
+    {"franka_cartesian_admittance_controller",
+     "franka_cartesian_admittance_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianAdmittanceTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"franka_cartesian_force_impedance_controller",
+     "franka_cartesian_force_impedance_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianUnifiedForceImpedanceTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     2},
+    {"franka_cartesian_force_impedance_controller_in_ee",
+     "franka_cartesian_force_impedance_controller_in_ee_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianUnifiedForceImpedanceTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kEndEffector,
+     kOneKilohertz,
+     kDefaultDuration,
+     2},
+    {"franka_cartesian_impedance_controller",
+     "franka_cartesian_impedance_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianImpedanceTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"franka_joint_impedance_controller",
+     "franka_joint_impedance_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kJointImpedance,
+     "fr3",
+     "fr3,panda",
+     7,
+     0,
+     CartesianFrame::kUnspecified,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"franka_variable_cartesian_impedance_controller",
+     "franka_variable_cartesian_impedance_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kVariableCartesianImpedanceTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"rizon_cartesian_admittance_controller",
+     "rizon_cartesian_admittance_controller_parallel.py",
+     ExampleRobotFamily::kRizon,
+     ExampleControllerKind::kCartesianAdmittancePose,
+     "rizon4s",
+     "rizon4,rizon4s,rizon4m,rizon10,rizon10s",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"rizon_cartesian_force_impedance_controller",
+     "rizon_cartesian_force_impedance_controller_parallel.py",
+     ExampleRobotFamily::kRizon,
+     ExampleControllerKind::kCartesianUnifiedForceImpedanceTorque,
+     "rizon4s",
+     "rizon4,rizon4s,rizon4m,rizon10,rizon10s",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     2},
+    {"rizon_cartesian_force_impedance_controller_in_ee",
+     "rizon_cartesian_force_impedance_controller_in_ee_parallel.py",
+     ExampleRobotFamily::kRizon,
+     ExampleControllerKind::kCartesianUnifiedForceImpedanceTorque,
+     "rizon4s",
+     "rizon4,rizon4s,rizon4m,rizon10,rizon10s",
+     7,
+     6,
+     CartesianFrame::kEndEffector,
+     kOneKilohertz,
+     kDefaultDuration,
+     2},
+    {"rizon_cartesian_impedance_controller",
+     "rizon_cartesian_impedance_controller_parallel.py",
+     ExampleRobotFamily::kRizon,
+     ExampleControllerKind::kCartesianImpedanceTorque,
+     "rizon4s",
+     "rizon4,rizon4s,rizon4m,rizon10,rizon10s",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"rizon_joint_impedance_controller",
+     "rizon_joint_impedance_controller_parallel.py",
+     ExampleRobotFamily::kRizon,
+     ExampleControllerKind::kJointImpedance,
+     "rizon4s",
+     "rizon4,rizon4s,rizon4m,rizon10,rizon10s",
+     7,
+     0,
+     CartesianFrame::kUnspecified,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"rizon_variable_cartesian_impedance_controller",
+     "rizon_variable_cartesian_impedance_controller_parallel.py",
+     ExampleRobotFamily::kRizon,
+     ExampleControllerKind::kVariableCartesianImpedanceTorque,
+     "rizon4s",
+     "rizon4,rizon4s,rizon4m,rizon10,rizon10s",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"flexiv_dual_bimanual_cartesian_impedance",
+     "flexiv_dual_bimanual_cartesian_impedance_parallel.py",
+     ExampleRobotFamily::kFlexivDual,
+     ExampleControllerKind::kBimanualCartesianImpedanceTorque,
+     "rizon4s,rizon4s",
+     "rizon4,rizon4s,rizon10,rizon10s",
+     14,
+     12,
+     CartesianFrame::kMainFrameOrientation,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"joint_impedance_controller",
+     "joint_impedance_controller_parallel.py",
+     ExampleRobotFamily::kUniversalRobots,
+     ExampleControllerKind::kStaticJointImpedance,
+     "ur5e",
+     "ur5e,ur10e",
+     6,
+     0,
+     CartesianFrame::kUnspecified,
+     kFiveHundredHertz,
+     kDefaultDuration,
+     -1},
+    {"cartesian_impedance_controller",
+     "cartesian_impedance_controller_parallel.py",
+     ExampleRobotFamily::kUniversalRobots,
+     ExampleControllerKind::kStaticCartesianImpedanceTorque,
+     "ur5e",
+     "ur5e,ur10e",
+     6,
+     6,
+     CartesianFrame::kRobotBase,
+     kFiveHundredHertz,
+     kDefaultDuration,
+     -1},
+    {"cartesian_unified_force_admittance_controller",
+     "cartesian_unified_force_admittance_controller_parallel.py",
+     ExampleRobotFamily::kUniversalRobots,
+     ExampleControllerKind::kCartesianUnifiedForceAdmittancePose,
+     "ur5e",
+     "ur5e",
+     6,
+     6,
+     CartesianFrame::kRobotBase,
+     kFiveHundredHertz,
+     kDefaultDuration,
+     2},
+    {"cartesian_unified_force_admittance_controller_in_ee",
+     "cartesian_unified_force_admittance_controller_in_ee_parallel.py",
+     ExampleRobotFamily::kUniversalRobots,
+     ExampleControllerKind::kCartesianUnifiedForceAdmittancePose,
+     "ur5e",
+     "ur5e",
+     6,
+     6,
+     CartesianFrame::kRobotBase,
+     kFiveHundredHertz,
+     kDefaultDuration,
+     2},
+    {"cartesian_admittance_controller",
+     "cartesian_admittance_controller_parallel.py",
+     ExampleRobotFamily::kUniversalRobots,
+     ExampleControllerKind::kCartesianAdmittancePose,
+     "ur5e",
+     "ur5e",
+     6,
+     6,
+     CartesianFrame::kRobotBase,
+     kFiveHundredHertz,
+     kDefaultDuration,
+     -1},
+    {"franka_cartesian_force_impedance_controller_with_tank",
+     "franka_cartesian_force_impedance_controller_with_tank_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianForceImpedanceWithTankTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     2},
+    {"franka_virtual_walls_controller",
+     "franka_virtual_walls_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianVirtualWallsTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"franka_artificial_potential_field_controller",
+     "franka_artificial_potential_field_controller_parallel.py",
+     ExampleRobotFamily::kFranka,
+     ExampleControllerKind::kCartesianPotentialFieldTorque,
+     "fr3",
+     "fr3,panda",
+     7,
+     6,
+     CartesianFrame::kRobotBase,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+    {"flexiv_dual_bimanual_compliant_hold",
+     "flexiv_dual_bimanual_compliant_hold_parallel.py",
+     ExampleRobotFamily::kFlexivDual,
+     ExampleControllerKind::kBimanualCartesianImpedanceTorque,
+     "rizon4s,rizon4s",
+     "rizon4,rizon4s,rizon10,rizon10s",
+     14,
+     12,
+     CartesianFrame::kMainFrameOrientation,
+     kOneKilohertz,
+     kDefaultDuration,
+     -1},
+}};
+
+constexpr std::array<ControllerExampleSpec, 20> kLegacySpecs = [] {
+  std::array<ControllerExampleSpec, 20> specs{};
+  for (std::size_t index = 0; index < specs.size(); ++index) {
+    specs[index] = kSpecs[index];
+  }
+  return specs;
+}();
+
+}  // namespace
+
+const std::array<ControllerExampleSpec, 20>& controller_example_specs() noexcept {
+  return kLegacySpecs;
+}
+
+ControllerExampleSpecView all_controller_example_specs() noexcept {
+  return {kSpecs.data(), kSpecs.size()};
+}
+
+const ControllerExampleSpec* find_controller_example_spec(const char* hardware_target) noexcept {
+  if (hardware_target == nullptr) {
+    return nullptr;
+  }
+  for (const ControllerExampleSpec& spec : kLegacySpecs) {
+    if (std::strcmp(spec.hardware_target, hardware_target) == 0) {
+      return &spec;
+    }
+  }
+  for (std::size_t index = kLegacySpecs.size(); index < kSpecs.size(); ++index) {
+    if (std::strcmp(kSpecs[index].hardware_target, hardware_target) == 0) {
+      return &kSpecs[index];
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace controllers
+}  // namespace srl
+}  // namespace nvidia

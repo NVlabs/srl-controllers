@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NVIDIA-2022-03-22
+
+#######################################################
+# KEEP ITEMS IN ALPHABETICAL ORDER WITHIN THEIR GROUP #
+#######################################################
+# See this page for information about this file
+# https://docs.gitlab.com/ee/user/project/code_owners.html
+
+# Default
+* @ljohannsmeie

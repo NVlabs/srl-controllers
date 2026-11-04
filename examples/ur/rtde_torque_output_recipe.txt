@@ -1,0 +1,5 @@
+timestamp
+actual_q
+actual_qd
+actual_TCP_pose
+tcp_offset

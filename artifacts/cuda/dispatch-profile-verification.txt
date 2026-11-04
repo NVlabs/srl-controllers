@@ -1,0 +1,2 @@
+No configured CUDA performance regressions detected.
+Qualified CUDA dispatch profiles were applied by the public auto-dispatch path.

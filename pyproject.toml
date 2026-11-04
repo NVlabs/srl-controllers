@@ -1,0 +1,347 @@
+# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NVIDIA-2022-03-22
+[build-system]
+requires = ["setuptools>=84,<85", "setuptools-scm>=10.2,<11", "pybind11>=3.1.0,<4.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nvidia-srl-controllers"
+authors = [
+  {name = "NVIDIA Seattle Robotics Lab"},
+]
+description = "A Python wrapped C++ library for robot controllers."
+keywords = ["docker"]
+classifiers = [
+  "Operating System :: OS Independent",
+  "Intended Audience :: Developers",
+  "Natural Language :: English",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Framework :: Robot Framework :: Library",
+]
+dynamic = ["version", "readme"]
+license = "LicenseRef-NVIDIA-2022-03-22 AND Apache-2.0 AND BSD-3-Clause"
+license-files = ["LICENSE", "LICENSES/*.txt", "THIRD_PARTY_NOTICES.md", "examples/ur/ur_description_LICENSE"]
+requires-python = ">=3.12"
+
+dependencies = [
+  "numpy>=2.0.0,<3.0.0",
+]
+
+[project.optional-dependencies]
+build = [
+  "pybind11>=3.1.0,<4.0.0",
+]
+
+ci = [
+  # Linting
+  # -------
+  "black==26.5.1",
+  "cpplint==2.0.2",
+  "flake8==7.3.0",
+  "flake8-copyright==0.2.4",
+  "flake8-docstrings==1.7.0",
+  "flake8-isort==7.0.0",
+  "flake8-rst-docstrings==0.4.0",
+  "flake8-pyproject==1.2.4",
+  "isort==8.0.1",
+  "mypy==2.3.1",
+  "pep8-naming==0.15.1",
+
+  # Testing
+  # -------
+  "gcovr==8.6",
+  "pytest==9.1.1",
+  "pytest-cov==7.1.0",
+  "pytest-xdist==3.8.0",
+
+  # Documentation linting
+  # ---------------------
+  "docutils==0.22.2",
+
+  # Packaging
+  # ---------
+  "build==1.5.0",
+
+  # Other
+  # -----
+  "anybadge==1.16.0",
+]
+
+[project.urls]
+Homepage = "https://gitlab-master.nvidia.com/srl/cpp/controllers/-/blob/main/README.md"
+Documentation = "https://srl.gitlab-master-pages.nvidia.com/cpp/controllers/"
+Repository = "https://gitlab-master.nvidia.com/srl/cpp/controllers/"
+Issues = "https://gitlab-master.nvidia.com/srl/cpp/controllers/-/issues"
+Changelog = "https://gitlab-master.nvidia.com/srl/cpp/controllers/-/blob/main/CHANGELOG.md"
+
+[project.scripts]
+# Add here CLI scripts here:
+
+[tool.setuptools]
+platforms = ["any"]
+
+[tool.setuptools.data-files]
+"share/doc/nvidia-srl-controllers" = [
+  "README.md",
+  "CHANGELOG.md",
+  "CLAUDE.md",
+  "LICENSE",
+  "CONTRIBUTING.md",
+  "THIRD_PARTY_NOTICES.md",
+]
+
+"share/doc/nvidia-srl-controllers/LICENSES" = ["LICENSES/Apache-2.0.txt"]
+
+"share/doc/nvidia-srl-controllers/docs" = [
+  "docs/public-controller-api.md",
+  "docs/public-api-validation.md",
+  "docs/example-parity.md",
+  "docs/example-validation.json",
+  "docs/public_api_inventory.json",
+]
+"share/doc/nvidia-srl-controllers/examples" = [
+  "examples/CMakeLists.txt",
+  "examples/README.md",
+  "examples/cartesian_math.hpp",
+]
+"share/doc/nvidia-srl-controllers/examples/composition" = [
+  "examples/composition/CMakeLists.txt",
+  "examples/composition/README.md",
+  "examples/composition/custom_controller.py",
+  "examples/composition/custom_state.cu",
+]
+"share/doc/nvidia-srl-controllers/examples/flexiv_dual" = [
+  "examples/flexiv_dual/CMakeLists.txt",
+  "examples/flexiv_dual/README.md",
+]
+"share/doc/nvidia-srl-controllers/examples/flexiv_dual/consumer" = [
+  "examples/flexiv_dual/consumer/CMakeLists.txt",
+  "examples/flexiv_dual/consumer/flexiv_dual_controller_example.cpp",
+]
+"share/doc/nvidia-srl-controllers/examples/franka" = [
+  "examples/franka/CMakeLists.txt",
+  "examples/franka/LibfrankaVersions.cmake",
+  "examples/franka/README.md",
+  "examples/franka/franka_admittance.hpp",
+  "examples/franka/franka_cartesian_admittance_controller.cpp",
+  "examples/franka/franka_cartesian_force_impedance_controller.cpp",
+  "examples/franka/franka_cartesian_force_impedance_controller_in_ee.cpp",
+  "examples/franka/franka_cartesian_impedance_controller.cpp",
+  "examples/franka/franka_joint_impedance_controller.cpp",
+  "examples/franka/franka_utils.hpp",
+  "examples/franka/franka_variable_cartesian_impedance_controller.cpp",
+]
+"share/doc/nvidia-srl-controllers/examples/franka/consumer" = [
+  "examples/franka/consumer/CMakeLists.txt",
+]
+"share/doc/nvidia-srl-controllers/examples/isaaclab" = [
+  "examples/isaaclab/README.md",
+  "examples/isaaclab/_canonical_launcher.py",
+  "examples/isaaclab/_flexiv_dual_parallel.py",
+  "examples/isaaclab/_hardware_profiles.py",
+  "examples/isaaclab/_native_components.py",
+  "examples/isaaclab/_parallel_common.py",
+  "examples/isaaclab/_pose_parallel.py",
+  "examples/isaaclab/_single_arm_parallel.py",
+  "examples/isaaclab/_ur_adapter.py",
+  "examples/isaaclab/_ur5e_admittance_parallel.py",
+  "examples/isaaclab/_ur5e_unified_force_admittance_parallel.py",
+  "examples/isaaclab/cartesian_admittance_controller_parallel.py",
+  "examples/isaaclab/cartesian_impedance_controller_parallel.py",
+  "examples/isaaclab/cartesian_unified_force_admittance_controller_in_ee_parallel.py",
+  "examples/isaaclab/cartesian_unified_force_admittance_controller_parallel.py",
+  "examples/isaaclab/flexiv_dual_bimanual_cartesian_impedance_parallel.py",
+  "examples/isaaclab/flexiv_dual_bimanual_compliant_hold_parallel.py",
+  "examples/isaaclab/fr3_cartesian_impedance_parallel.py",
+  "examples/isaaclab/franka_cartesian_admittance_controller_parallel.py",
+  "examples/isaaclab/franka_cartesian_force_impedance_controller_in_ee_parallel.py",
+  "examples/isaaclab/franka_cartesian_force_impedance_controller_parallel.py",
+  "examples/isaaclab/franka_cartesian_impedance_controller_parallel.py",
+  "examples/isaaclab/franka_joint_impedance_controller_parallel.py",
+  "examples/isaaclab/franka_variable_cartesian_impedance_controller_parallel.py",
+  "examples/isaaclab/hardware_profile_contract.json",
+  "examples/isaaclab/joint_impedance_controller_parallel.py",
+  "examples/isaaclab/rizon_cartesian_admittance_controller_parallel.py",
+  "examples/isaaclab/rizon_cartesian_force_impedance_controller_in_ee_parallel.py",
+  "examples/isaaclab/rizon_cartesian_force_impedance_controller_parallel.py",
+  "examples/isaaclab/rizon_cartesian_impedance_controller_parallel.py",
+  "examples/isaaclab/rizon_joint_impedance_controller_parallel.py",
+  "examples/isaaclab/rizon_variable_cartesian_impedance_controller_parallel.py",
+  "examples/isaaclab/ur5e_cartesian_admittance_parallel.py",
+]
+"share/doc/nvidia-srl-controllers/examples/rizon" = [
+  "examples/rizon/CMakeLists.txt",
+  "examples/rizon/FlexivRdkDependencyPins.cmake",
+  "examples/rizon/FlexivRdkVersions.cmake",
+  "examples/rizon/PatchFlexivRdkChecksum.cmake",
+  "examples/rizon/PatchFlexivRdkDependencies.cmake",
+  "examples/rizon/README.md",
+  "examples/rizon/rizon_controller_example.cpp",
+  "examples/rizon/rizon_utils.hpp",
+  "examples/rizon/rizon_workspaces.hpp",
+]
+"share/doc/nvidia-srl-controllers/examples/rizon/consumer" = [
+  "examples/rizon/consumer/CMakeLists.txt",
+]
+"share/doc/nvidia-srl-controllers/examples/synthetic" = [
+  "examples/synthetic/CMakeLists.txt",
+  "examples/synthetic/README.md",
+  "examples/synthetic/joint_impedance_step.cpp",
+  "examples/synthetic/rt_reference_loop.cpp",
+]
+"share/doc/nvidia-srl-controllers/examples/ur" = [
+  "examples/ur/CMakeLists.txt",
+  "examples/ur/README.md",
+  "examples/ur/ur_description_LICENSE",
+  "examples/ur/cartesian_admittance_controller.cpp",
+  "examples/ur/cartesian_impedance_controller.cpp",
+  "examples/ur/cartesian_unified_force_admittance_controller.cpp",
+  "examples/ur/cartesian_unified_force_admittance_controller_in_ee.cpp",
+  "examples/ur/impedance_common.hpp",
+  "examples/ur/initial_motion.hpp",
+  "examples/ur/joint_impedance_controller.cpp",
+  "examples/ur/unified_force_admittance_example.hpp",
+  "examples/ur/ur_kinematics.cpp",
+  "examples/ur/ur_kinematics.hpp",
+  "examples/ur/ur_kinematics_test.cpp",
+]
+"share/doc/nvidia-srl-controllers/examples/ur/consumer" = [
+  "examples/ur/consumer/CMakeLists.txt",
+]
+"share/doc/nvidia-srl-controllers/examples/ur/models" = [
+  "examples/ur/models/ur10e.urdf",
+  "examples/ur/models/ur5e.urdf",
+]
+
+[tool.setuptools.packages.find]
+where = ["python/src"]
+
+[tool.setuptools.dynamic]
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
+# See the `setuptools_scm` documentation for the description of the schemes used below.
+# https://pypi.org/project/setuptools-scm/
+# NOTE: The `fallback_version` is necessary to prevent an error when attempting to install the
+# project locally and the project is not in a valid git repo or when git is not installed or
+# functioning correctly.
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "dirty-tag"
+fallback_version = "0.0.0.dev0"
+
+[tool.black]
+line-length = 100
+extend-exclude = "deprecated/"
+preview = true
+target-version = ["py312"]
+
+[tool.flake8]
+max-line-length = 100
+select = ["E", "F", "W", "C" , "D", "I", "N", "RST"]
+exclude = [".git", "build", "deprecated", "dist", "venv", "wip"]
+ignore = [
+  "D105", # (don't require docstrings for magic methods)
+  "E203", # (to be Black compatible)
+  "E731", # (ignore recommendation to not use lambdas because there is no other way to write a single line function with out warnings)
+  "RST201", "RST203", "RST301", # (to be Google Python style compatible, see: https://github.com/peterjc/flake8-rst-docstrings/issues/17)
+  "W503", # (this is deprecated, see: https://lintlyci.github.io/Flake8Rules/rules/W503.html)
+]
+per-file-ignores = [
+  "tools/generate_public_blocks.py:E501,E201", # Embedded templates are formatted at generation.
+  "tools/generate_equation_api.py:E501,E201",
+  "python/tests/*_test.py:C801,D101,D102,D103,D212,N802,N806",
+  "python/src/nvidia/srl/_controllers/*.pyi:D101,D102,D107,E704,I004",
+]
+docstring-convention = "google"
+rst-roles = [
+  "attr",
+  "class",
+  "func",
+  "meth",
+  "mod",
+  "obj",
+  "ref",
+  "term",
+]
+rst-directives = [
+  "autosummary",
+  "data",
+  "currentmodule",
+  "deprecated",
+  "envvar",
+  "exception",
+  "glossary",
+  "moduleauthor",
+  "plot",
+  "testcode",
+  "versionadded",
+  "versionchanged",
+]
+rst-substitutions = [
+  "version",
+]
+# Needed to prevent false N804 and N805 errors when using the `abc` module
+# See: https://github.com/pycqa/pep8-naming#options
+classmethod-decorators = ["classmethod", "abstractclassmethod"]
+staticmethod-decorators = ["staticmethod", "abstractstaticmethod"]
+copyright-check = true
+# See the following page about NVIDIA's copyright header
+# https://confluence.nvidia.com/pages/viewpage.action?pageId=788418816
+copyright-regexp = "\\# SPDX-FileCopyrightText: Copyright \\(c\\) 20\\d{2}(?:-20\\d{2})? NVIDIA CORPORATION & AFFILIATES\\. All rights reserved\\.\n\\# SPDX-License-Identifier: LicenseRef-NVIDIA-2022-03-22"
+
+[tool.isort]
+# Multi line output mode 3 is used to conform with Black. See
+# https://github.com/PyCQA/isort#multi-line-output-modes
+multi_line_output = 3
+profile = "black"
+import_heading_stdlib = "Standard Library"
+import_heading_thirdparty = "Third Party"
+import_heading_firstparty = "NVIDIA"
+known_first_party = ["nvidia"]
+import_heading_localfolder = "Local Folder"
+line_length = 100
+skip_glob = ["deprecated/*", "wip/*"]
+
+[tool.pytest.ini_options]
+norecursedirs = [".git", ".venv", "deprecated", "dist", "wip"]
+python_files = ["*_test.py"]
+markers = [
+  "isaaclab: optional local IsaacLab integration tests",
+]
+
+[tool.coverage.report]
+# NOTE: Single-quoted strings are required in TOML for regular expressions
+exclude_lines = [
+  "pragma: no cover", # Need to re-enable the standard no cover match
+  '^\s*pass\s*$',  # Skip any pass lines
+]
+
+[tool.mypy]
+disallow_untyped_defs = true
+no_implicit_optional = true
+show_error_codes = true
+warn_unused_ignores = true
+exclude = [
+  "build",
+  "deprecated",
+  "dist",
+  "docs",
+  "venv",
+  "wip",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "nvidia",
+  "nvidia.srl",
+  "nvidia.srl.controllers",
+  "nvidia.srl._controllers",
+  "nvidia.srl._controllers.*",
+  "._controllers",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["controllers.*"]
+disallow_untyped_defs = false

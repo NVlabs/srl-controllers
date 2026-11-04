@@ -1,0 +1,5 @@
+# Template version: v1.21.0
+clang-format,>=18.0.0,<19.0.0
+doxygen,>=1.9.0,<2.0.0
+libgtest-dev,>=1.11.0,<2.0.0
+sshpass,>=1.0.0,<2.0.0

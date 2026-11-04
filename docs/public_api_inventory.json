@@ -1,0 +1,1818 @@
+{
+  "schema_version": 1,
+  "blocks": [
+    {
+      "name": "TorqueFilter",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "JointImpedanceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "NullspaceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "OperationalSpaceMass",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianImpedanceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "BimanualCartesianImpedanceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "14 joints, 12 task axes",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "BimanualTaskKinematics",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "decoupled_cooperative",
+        "coupled_rigid_transform"
+      ],
+      "dimensions": "14 joints, 12 task axes",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianAdmittancePoseController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "decoupled_cooperative",
+        "coupled_rigid_transform"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "OperationalSpaceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "OperationalSpaceInverseDynamicsController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianForceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianUnifiedForceImpedanceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "StaticJointImpedanceController",
+      "backends": ["cpu", "cuda"],
+      "dtypes": ["float32", "float64"],
+      "parameters": ["shared", "per_batch"],
+      "modes": ["diagonal", "dense"],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "StaticCartesianImpedanceController",
+      "backends": ["cpu", "cuda"],
+      "dtypes": ["float32", "float64"],
+      "parameters": ["shared", "per_batch"],
+      "modes": ["default"],
+      "dimensions": "6 task axes in an explicit Cartesian frame",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianUnifiedForceAdmittanceController",
+      "backends": ["cpu", "cuda"],
+      "dtypes": ["float32", "float64"],
+      "parameters": ["shared", "per_batch"],
+      "modes": ["default"],
+      "dimensions": "6 task axes in an explicit Cartesian frame",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "VariableCartesianImpedanceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "TaskWrenchToJointTorqueController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianImpedanceTorqueController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "VariableCartesianImpedanceTorqueController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "CartesianUnifiedForceImpedanceTorqueController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "BimanualCartesianImpedanceTorqueController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "decoupled_cooperative",
+        "coupled_rigid_transform"
+      ],
+      "dimensions": "14 joints, 12 task axes",
+      "python_test": "controller_api_test.py"
+    },
+    {
+      "name": "ProportionalBlock",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "positive signal_dim",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "IntegratorBlock",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "positive signal_dim",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "DifferentiatorBlock",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "positive signal_dim",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "JointStiffness",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "dense",
+        "diagonal"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "JointDamping",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "dense",
+        "diagonal"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "JointDampingDoubleDiagonalization",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "CartesianStiffness",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "VariableCartesianStiffness",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "CartesianDamping",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "CartesianDampingDoubleDiagonalization",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "CartesianDampingFactorizationDesign",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "CartesianVirtualMass",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "ShapingFunction",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "positive signal_dim",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "CommandObserver",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "positive signal_dim",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "FlowFunnel",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "InverseAPF",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "InertialCoupling",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "EnergyTank",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "signal_dim = 1",
+      "python_test": "public_blocks_test.py"
+    },
+    {
+      "name": "VariableCartesianUnifiedForceImpedanceController",
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "parameters": [
+        "shared",
+        "per_batch"
+      ],
+      "modes": [
+        "default"
+      ],
+      "dimensions": "documented ControllerConfig bounds",
+      "python_test": "public_blocks_test.py"
+    }
+  ],
+  "equations": [
+    {
+      "name": "proportional_value",
+      "inputs": {
+        "gain": "scalar",
+        "input_signal": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "differentiator_value",
+      "inputs": {
+        "input_signal": "scalar",
+        "previous_signal": "scalar",
+        "t_delta": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "clamp_value",
+      "inputs": {
+        "value": "scalar",
+        "lower_limit": "scalar",
+        "upper_limit": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "value": "Scalar",
+        "saturated": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "integrator_trapezoid_value",
+      "inputs": {
+        "integrated_signal": "scalar",
+        "input_signal": "scalar",
+        "previous_signal": "scalar",
+        "t_delta": "scalar",
+        "lower_limit": "scalar",
+        "upper_limit": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "value": "Scalar",
+        "saturated": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "joint_diagonal_feedback_value",
+      "inputs": {
+        "diagonal_gain": "scalar",
+        "joint_error": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "shaping_factor_value",
+      "inputs": {
+        "error": "scalar",
+        "maximum_distance": "scalar",
+        "shaping_distance": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "cartesian_force_command_value",
+      "inputs": {
+        "proportional_term": "scalar",
+        "differentiator_term": "scalar",
+        "integral_term": "scalar",
+        "desired_wrench": "scalar",
+        "feedforward_wrench": "scalar",
+        "shaping_factor": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "validate_energy_tank_parameters",
+      "inputs": {
+        "upper_energy_limit": "scalar",
+        "lower_energy_limit": "scalar",
+        "initial_energy": "scalar",
+        "empty_threshold": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "energy_tank_step",
+      "inputs": {
+        "state_variable": "scalar",
+        "power_signal": "scalar",
+        "additional_power": "scalar",
+        "t_delta": "scalar",
+        "upper_energy_limit": "scalar",
+        "lower_energy_limit": "scalar",
+        "empty_threshold": "scalar",
+        "power_noise": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "scale": "Scalar",
+        "filtered_power": "Scalar",
+        "state_variable": "Scalar",
+        "saturated": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "rotation_tolerance",
+      "inputs": {},
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "vector_norm",
+      "inputs": {
+        "vector": "vector"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "rotation_is_valid",
+      "inputs": {
+        "pose": "matrix"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "so3_log_error",
+      "inputs": {
+        "current_pose": "matrix",
+        "goal_pose": "matrix"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool",
+        "rotation_error": "vector"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "dense_feedback_row",
+      "inputs": {
+        "gain": "matrix",
+        "error": "vector"
+      },
+      "host_indices": [
+        "row"
+      ],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "cartesian_stiffness_value",
+      "inputs": {
+        "stiffness": "matrix",
+        "pose_error": "vector"
+      },
+      "host_indices": [
+        "row"
+      ],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "cartesian_damping_value",
+      "inputs": {
+        "damping": "matrix",
+        "velocity_error": "vector"
+      },
+      "host_indices": [
+        "row"
+      ],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "joint_stiffness_value",
+      "inputs": {
+        "stiffness": "matrix",
+        "position_error": "vector"
+      },
+      "host_indices": [
+        "row"
+      ],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "joint_damping_value",
+      "inputs": {
+        "damping": "matrix",
+        "velocity_error": "vector"
+      },
+      "host_indices": [
+        "row"
+      ],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "variable_stiffness_value",
+      "inputs": {
+        "previous": "scalar",
+        "requested": "scalar",
+        "lower": "scalar",
+        "upper": "scalar",
+        "maximum_rate": "scalar",
+        "dt": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "deadband_value",
+      "inputs": {
+        "value": "scalar",
+        "threshold": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "force_error_value",
+      "inputs": {
+        "desired": "scalar",
+        "measured": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "matrix_derivative_value",
+      "inputs": {
+        "current": "scalar",
+        "previous": "scalar",
+        "dt": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "flow_funnel_geometry",
+      "inputs": {
+        "start": "vector",
+        "end": "vector",
+        "position": "vector"
+      },
+      "host_indices": [],
+      "outputs": {
+        "length": "Scalar",
+        "projection_distance": "Scalar",
+        "radius": "Scalar",
+        "valid": "bool",
+        "unit_direction": "vector",
+        "unit_direction_to_projection": "vector"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "flow_funnel_weight",
+      "inputs": {
+        "radius": "scalar",
+        "funnel_radius": "scalar",
+        "maximum_distance": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "flow_funnel_direction_value",
+      "inputs": {
+        "radius": "scalar",
+        "funnel_radius": "scalar",
+        "maximum_distance": "scalar",
+        "weight": "scalar",
+        "funnel_direction": "scalar",
+        "projection_direction": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "inverse_apf_damping",
+      "inputs": {
+        "error_norm_squared": "scalar",
+        "minimum_damping": "scalar",
+        "maximum_damping": "scalar",
+        "gamma": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "inverse_apf_wrench_value",
+      "inputs": {
+        "error": "scalar",
+        "velocity": "scalar",
+        "error_norm": "scalar",
+        "error_norm_squared": "scalar",
+        "alpha": "scalar",
+        "deadzone": "scalar",
+        "damping": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "damping_factorization_value",
+      "inputs": {
+        "mass_times_damping_times_stiffness": "scalar",
+        "stiffness_times_damping_times_mass": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "damping_double_diagonalization_value",
+      "inputs": {
+        "mass_times_damping_times_stiffness_times_mass_transpose": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "command_observer_accepts",
+      "inputs": {
+        "command": "scalar",
+        "absolute_limit": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "inertial_coupling_value",
+      "inputs": {
+        "mass_derivative_times_velocity": "scalar",
+        "mass_times_jacobian_derivative_velocity": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "cartesian_impedance_value",
+      "inputs": {
+        "stiffness_wrench": "scalar",
+        "damping_wrench": "scalar",
+        "inertial_wrench": "scalar",
+        "acceleration_wrench": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "joint_impedance_value",
+      "inputs": {
+        "stiffness_torque": "scalar",
+        "damping_torque": "scalar",
+        "acceleration_torque": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "nullspace_feedback_value",
+      "inputs": {
+        "stiffness_torque": "scalar",
+        "damping_torque": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "nullspace_projector_value",
+      "inputs": {
+        "dynamically_consistent_inverse_term": "scalar"
+      },
+      "host_indices": [
+        "row",
+        "col"
+      ],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "nullspace_projected_torque_value",
+      "inputs": {
+        "desired_torque": "scalar",
+        "task_space_correction": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "unified_force_impedance_value",
+      "inputs": {
+        "impedance_wrench": "scalar",
+        "force_wrench": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "admittance_force_balance_value",
+      "inputs": {
+        "external_wrench": "scalar",
+        "feedforward_wrench": "scalar",
+        "stiffness_wrench": "scalar",
+        "damping_wrench": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "operational_space_acceleration_value",
+      "inputs": {
+        "desired_acceleration": "scalar",
+        "position_feedback": "scalar",
+        "velocity_feedback": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "operational_space_mass_parameters_valid",
+      "inputs": {
+        "regularization": "scalar",
+        "minimum_pivot": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "symmetric_average",
+      "inputs": {
+        "forward": "scalar",
+        "transpose": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "symmetric_pair_is_valid",
+      "inputs": {
+        "forward": "scalar",
+        "transpose": "scalar",
+        "relative_tolerance": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "operational_space_inverse_mass_value",
+      "inputs": {
+        "forward": "scalar",
+        "transpose": "scalar",
+        "regularization": "scalar",
+        "diagonal": "bool"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "torque_filter_value",
+      "inputs": {
+        "requested": "scalar",
+        "previous": "scalar",
+        "lower_limit": "scalar",
+        "upper_limit": "scalar",
+        "maximum_rate": "scalar",
+        "dt": "scalar",
+        "initialized": "bool"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar",
+        "saturated": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "safe_output_value",
+      "inputs": {
+        "safe_mode": "bool",
+        "hold_last_valid": "bool",
+        "has_last_valid": "bool",
+        "current": "scalar",
+        "last_valid": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "virtual_wall_force_value",
+      "inputs": {
+        "signed_distance": "scalar",
+        "normal_velocity": "scalar",
+        "stiffness": "scalar",
+        "damping": "scalar",
+        "damping_activation_distance": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "spherical_apf_repulsion_value",
+      "inputs": {
+        "surface_clearance": "scalar",
+        "influence_distance": "scalar",
+        "gain": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "Scalar"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    },
+    {
+      "name": "validate_inverse_apf_parameters",
+      "inputs": {
+        "alpha": "scalar",
+        "gamma": "scalar",
+        "minimum_damping": "scalar",
+        "maximum_damping": "scalar",
+        "deadzone": "scalar"
+      },
+      "host_indices": [],
+      "outputs": {
+        "output": "bool"
+      },
+      "backends": [
+        "cpu",
+        "cuda"
+      ],
+      "dtypes": [
+        "float32",
+        "float64"
+      ],
+      "test": "equations_test.py"
+    }
+  ]
+}
