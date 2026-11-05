@@ -27,6 +27,8 @@ trap 'exit 130' HUP INT TERM
 mkdir -p "$work/context/ci" "$work/docker-auth"
 cp "$CI_PROJECT_DIR/docker/controllers-scan-security.dockerfile" "$work/context/Dockerfile"
 cp "$CI_PROJECT_DIR/ci/refresh_scan_system_packages.sh" "$work/context/ci/refresh_scan_system_packages.sh"
+cp "$CI_PROJECT_DIR/ci/refresh_certificate_trust.sh" "$work/context/ci/refresh_certificate_trust.sh"
+cp "$CI_PROJECT_DIR/ci/check_certificate_trust.py" "$work/context/ci/check_certificate_trust.py"
 
 # Reuse the repository's previous successful Docker runner route and API fallback.
 sudo -n apt-get update
@@ -60,14 +62,46 @@ docker_compat build --pull --no-cache --platform linux/amd64 --target ci-securit
     --label 'org.opencontainers.image.source=https://gitlab-master.nvidia.com/srl/cpp/controllers' \
     --iidfile "$results/image-id.txt" --tag "$image" "$work/context"
 docker_compat image inspect "$image" > "$results/image-inspect.json"
-container=$(docker_compat create --network none --entrypoint /bin/true "$image")
+# Exercise the installed helper as the image's configured CI user, not sudo/root.
+# The minimal context uses umask 077; COPY must set the helper's readable mode.
+container=$(docker_compat create --network none --entrypoint /bin/sh "$image" -c \
+    'test "$(id -u)" -ne 0 && exec python3 -I /usr/local/libexec/controllers/check_certificate_trust.py --pip --certifi --java-if-present')
+docker_compat start --attach "$container" > "$results/job-user-certificate-trust.json"
+test "$(docker_compat inspect --format '{{.State.ExitCode}}' "$container")" -eq 0
+docker_compat inspect --format '{{json .Config.User}}' "$container" > "$results/job-user.json"
 docker_compat cp "$container:/usr/local/share/controllers-scan-security/." "$results/"
 docker_compat rm "$container" >/dev/null
 container=''
 test -s "$results/minimum-versions.tsv"
 test -s "$results/host-package-versions.tsv"
+test -s "$results/certificate-trust.json"
+test -s "$results/ca-certificates-version.txt"
 
 # The build's full-version checks must succeed before the one registry push.
+python3 -I - "$results" <<'PYTRUST'
+import csv
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+results = Path(sys.argv[1])
+trust = json.loads((results / "certificate-trust.json").read_text())
+job_trust = json.loads((results / "job-user-certificate-trust.json").read_text())
+job_user = json.loads((results / "job-user.json").read_text())
+assert isinstance(job_user, str) and job_user, "No explicit image job user"
+assert job_trust == trust, "Job user cannot reproduce the image's trust checks"
+assert trust["contract"] == "controllers-certificate-trust/1"
+assert trust["network_requests"] == 0
+assert trust["stores"] and all(store["blocked_root_absent"] for store in trust["stores"])
+assert trust["packages"] == {"pip": "26.2.2", "certifi": "2026.10.19"}
+ca_version = (results / "ca-certificates-version.txt").read_text().strip()
+subprocess.run(["dpkg", "--compare-versions", ca_version,
+                "ge", "20260816ubuntu0.24.04.1"], check=True)
+with (results / "host-package-versions.tsv").open() as handle:
+    inventory = list(csv.reader(handle, delimiter="\t"))
+assert [row[1] for row in inventory if row[0] == "ca-certificates"] == [ca_version]
+PYTRUST
 printf 'push_about_to_start\n' > "$results/push-state.txt"
 docker_compat push "$image"
 printf 'push_returned_success\n' > "$results/push-state.txt"
@@ -77,7 +111,9 @@ printf '%s\n' "$CI_COMMIT_SHA" > "$results/source-commit.txt"
 printf '%s\n' "$CI_PIPELINE_ID" > "$results/pipeline-id.txt"
 printf '%s\n' "$CI_JOB_ID" > "$results/job-id.txt"
 sha256sum "$CI_PROJECT_DIR/docker/controllers-scan-security.dockerfile" \
-    "$CI_PROJECT_DIR/ci/refresh_scan_system_packages.sh" > "$results/build-input-sha256.txt"
+    "$CI_PROJECT_DIR/ci/refresh_scan_system_packages.sh" \
+    "$CI_PROJECT_DIR/ci/refresh_certificate_trust.sh" \
+    "$CI_PROJECT_DIR/ci/check_certificate_trust.py" > "$results/build-input-sha256.txt"
 python3 -I - "$results" "$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE/ci" <<'PYRECEIPT'
 import csv
 import hashlib
@@ -117,6 +153,10 @@ receipt = {
     "pipeline_id": (results / "pipeline-id.txt").read_text().strip(),
     "job_id": (results / "job-id.txt").read_text().strip(), "packages": packages,
     "package_inventory_sha256": hashlib.sha256((results / "host-package-versions.tsv").read_bytes()).hexdigest(),
+    "certificate_trust": json.loads((results / "certificate-trust.json").read_text()),
+    "job_user": json.loads((results / "job-user.json").read_text()),
+    "job_user_certificate_trust": json.loads((results / "job-user-certificate-trust.json").read_text()),
+    "ca_certificates_version": (results / "ca-certificates-version.txt").read_text().strip(),
     "library_build_or_scan_started": False, "official_completion": "not_inferred",
 }
 (results / "build-receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")

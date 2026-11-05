@@ -277,6 +277,14 @@ cmake --build _build --parallel
 ctest --test-dir _build --output-on-failure
 ```
 
+For Python installations, apply the operating system's certificate security updates
+and use a security-updated interpreter. CPython 3.12.16 includes the
+CVE-2026-115557 certificate denylist; distribution backports may use an earlier
+upstream version number. Update pip in each environment to at least 26.2.2 using
+the hash-pinned bootstrap in the [Python incident guidance](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576/1),
+then update certifi to at least 2026.10.19 wherever it is installed. Updating certifi
+alone does not update Python's system trust store or pip's vendored bundle.
+
 Build an ordinary native Python wheel with `python -m pip wheel . --no-deps -w dist`.
 It includes the extension and controller library with relative library lookup. For CUDA, set
 `CONTROLLERS_CMAKE_ARGS="-DENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=<SM>-real"` and satisfy the

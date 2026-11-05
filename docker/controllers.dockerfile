@@ -42,6 +42,11 @@ RUN sudo chmod 0644 $HOME/pyproject.toml && \
 RUN python3 $HOME/extract_py_dependencies.py
 
 # Install runtime Python dependencies
+# Update system and packaging trust before the first dependency download.
+COPY ci/refresh_certificate_trust.sh /tmp/controllers-refresh-certificate-trust.sh
+COPY ci/check_certificate_trust.py /usr/local/libexec/controllers/check_certificate_trust.py
+RUN sudo -n chmod 0644 /usr/local/libexec/controllers/check_certificate_trust.py \
+    && sudo -n /bin/sh /tmp/controllers-refresh-certificate-trust.sh /usr/local/libexec/controllers/check_certificate_trust.py
 RUN \
     sudo pip3 install -U -r $HOME/pip_pkg_list.txt \
     --index-url https://pypi.org/simple
@@ -71,6 +76,7 @@ RUN \
 # Keep full Ubuntu security revisions verified in future full CI image rebuilds.
 COPY ci/refresh_scan_system_packages.sh /tmp/controllers-refresh-system-packages.sh
 RUN sudo -n /bin/sh /tmp/controllers-refresh-system-packages.sh \
+    && sudo -n /bin/sh /tmp/controllers-refresh-certificate-trust.sh /usr/local/libexec/controllers/check_certificate_trust.py \
     && sudo -n rm /tmp/controllers-refresh-system-packages.sh
 
 # ----------------------------------------------------------------------------

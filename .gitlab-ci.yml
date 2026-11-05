@@ -19,7 +19,7 @@ controllers_oss_core_cpp:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -56,6 +56,7 @@ controllers_oss_core_cpp:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -77,7 +78,7 @@ controllers_oss_core_cpp:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -134,7 +135,7 @@ controllers_oss_core_cpp:
       wrapt==1.17.3 --hash=sha256:042ec3bb8f319c147b1301f2393bc19dba6e176b7da446853406d041c36c7828
       zipp==3.23.0 --hash=sha256:071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e
       """
-      COLLECTOR_SOURCE = '"""Proposed remote post-scan collector using pinned official Pulse SDK APIs.\n\nThis module imports no scanner or authentication library until its remote entry\npoint is called. Local validation uses injected fake callbacks only.\n"""\nimport contextlib\nimport hashlib\nimport io\nimport json\nimport logging\nimport os\nfrom pathlib import Path\nimport re\nimport sys\nimport time\nimport uuid\n\nBASE = os.environ["CI_COMMIT_SHA"]\nif len(BASE) != 40 or any(c not in "0123456789abcdef" for c in BASE):\n    raise SystemExit("A full immutable pipeline commit is required.")\n\n\ndef atomic_json(path, value, forbidden=()):\n    text = json.dumps(value, indent=2) + "\\n"\n    if any(secret and secret in text for secret in forbidden):\n        raise ValueError("Credential detected in proposed output; output refused")\n    temporary = path.with_suffix(path.suffix + ".tmp")\n    temporary.write_text(text)\n    temporary.replace(path)\n\n\ndef save_component_match_evidence(output, data, backend, forbidden=()):\n    """Retain the normal BOM and both review views through GET-only SDK calls.\n\n    get_items owns pagination. Materialize every collection before labelling\n    the snapshots complete; iterator errors must not create partial snapshots.\n    The unfiltered review view retains low-score and future review categories.\n    It does not confirm matches or change the server\'s visibility defaults.\n    """\n    component_rows = list(data.get_project_components(\n        backend.project, backend.version, confirm_unknown_versions=False))\n    project_row = data.get_project_by_name(backend.project)\n    version_row = data.get_project_version_by_name(project_row, backend.version)\n    version_href = version_row.get("_meta", {}).get("href", "")\n    if not version_href.startswith(backend.url.rstrip("/") + "/api/projects/"):\n        raise ValueError("Unexpected existing backend version URL")\n    review_url = version_href.rstrip("/") + "/review-components"\n    headers = {"Accept": "application/vnd.blackducksoftware.bill-of-materials-5+json"}\n    review_rows = list(data.hub.get_items(\n        review_url, params={"filter": "bomMatchReviewType:UNKNOWN_VERSION"},\n        headers=headers))\n    all_review_rows = list(data.hub.get_items(review_url, headers=headers))\n    output = Path(output)\n    output.mkdir(parents=True, exist_ok=True)\n    atomic_json(output / "backend-components.json", {\n        "source": "official Black Duck normal components GET",\n        "items": component_rows, "complete": True,\n        "unknown_versions_confirmed": False}, forbidden)\n    atomic_json(output / "backend-review-components.json", {\n        "source": "official Black Duck review-components GET",\n        "filter": "bomMatchReviewType:UNKNOWN_VERSION",\n        "items": review_rows, "complete": True,\n        "unknown_versions_confirmed": False}, forbidden)\n    atomic_json(output / "backend-match-review-components.json", {\n        "source": "official Black Duck review-components GET",\n        "filter": None, "items": all_review_rows, "complete": True,\n        "components_confirmed": False}, forbidden)\n\n\ndef collect(output, identity, *, status, export_sbom, export_findings, cleanup,\n            forbidden=(), sleep=time.sleep, attempts=20):\n    """Persist both inventories before cleanup; retries only existing reads.\n\n    Callbacks must address exactly identity\'s unique job-scoped backend project.\n    No callback submits a scan or changes component/finding dispositions.\n    """\n    output = Path(output)\n    output.mkdir(parents=True, exist_ok=True)\n    receipt = {**identity, "state": "waiting_for_existing_inventory",\n               "scan_submission": False, "cleanup_attempted": False,\n               "official_completion": "not_inferred"}\n    receipt_path = output / "inventory-export.json"\n    atomic_json(receipt_path, receipt, forbidden)\n    for attempt in range(attempts):\n        current = status()\n        receipt["processing_status"] = current\n        atomic_json(receipt_path, receipt, forbidden)\n        if current == {"scan": "SCAN_COMPLETE", "bom": "UP_TO_DATE"}:\n            break\n        if current.get("bom") == "UP_TO_DATE_WITH_ERRORS":\n            raise ValueError("BOM completed with errors; coverage remains unresolved")\n        if attempt + 1 == attempts:\n            raise TimeoutError("Existing scan/BOM still processing; no scan resubmitted")\n        sleep(15)\n\n    sbom = export_sbom()\n    if not isinstance(sbom, dict) or sbom.get("bomFormat") != "CycloneDX":\n        raise ValueError("Expected official CycloneDX export")\n    components = sbom.get("components")\n    if not isinstance(components, list) or not components:\n        raise ValueError("Empty or missing component inventory; coverage unresolved")\n    if any(not isinstance(c, dict) or not c.get("name") for c in components):\n        raise ValueError("Malformed component inventory")\n    atomic_json(output / "sbom.cdx.json", sbom, forbidden)\n    receipt.update(state="sbom_saved", component_count=len(components))\n    atomic_json(receipt_path, receipt, forbidden)\n\n    findings = export_findings()\n    if not isinstance(findings, dict) or findings.get("status") != "COMPLETE":\n        raise ValueError("Vulnerability report incomplete; keep backend evidence")\n    if not isinstance(findings.get("data"), list):\n        raise ValueError("Vulnerability report missing findings array")\n    atomic_json(output / "cpp-vulnerabilities.json", findings, forbidden)\n    receipt.update(state="both_exports_saved", finding_count=len(findings["data"]),\n                   files={name: hashlib.sha256((output / name).read_bytes()).hexdigest()\n                          for name in ["sbom.cdx.json", "cpp-vulnerabilities.json"]})\n    atomic_json(receipt_path, receipt, forbidden)\n    # Cleanup is the official temporary-project lifecycle, limited to a unique\n    # per-job project. It occurs only after both complete files are on disk.\n    receipt["cleanup_attempted"] = True\n    atomic_json(receipt_path, receipt, forbidden)\n    cleanup()\n    receipt.update(state="exports_saved_temporary_backend_cleaned",\n                   cleanup_completed=True,\n                   coverage="component_matching_and_release_reconciliation_required",\n                   findings="review_required" if findings["data"] else "none_in_export")\n    atomic_json(receipt_path, receipt, forbidden)\n    return receipt\n\n\ndef main():\n    import os\n    request = json.loads(Path(sys.argv[1]).read_text())\n    pipeline_id = os.environ.get("CI_PIPELINE_ID", "")\n    job_id = os.environ.get("CI_JOB_ID", "")\n    profile = request["profile"]\n    expected = "srl-controllers-NSPECT-BE6H-WKN4-" + profile + "-" + pipeline_id + "-" + job_id\n    if (not pipeline_id.isdigit() or not job_id.isdigit()\n            or not re.fullmatch(r"[a-z0-9_]+", profile)\n            or request["source_commit"] != BASE\n            or request["project"] != expected\n            or request["version"] != "0.12.0-" + BASE):\n        raise SystemExit("Unexpected collector scope; no backend cleanup allowed")\n    token = os.environ.get("PULSE_BEARER_TOKEN", "")\n    if (os.environ.get("CI_PROJECT_ID") != "160347"\n            or os.environ.get("CI_COMMIT_BRANCH") != "main"\n            or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"\n            or os.environ.get("CI_PIPELINE_SOURCE") not in {"api", "web"}\n            or os.environ.get("CONTROLLERS_OSS_SCAN") != "1"):\n        raise SystemExit("Collector requires the explicitly gated protected job")\n    if not token:\n        raise SystemExit("Existing short-lived Pulse token required")\n    output = Path(request["output"])\n    identity = {k: request[k] for k in ["source_commit", "profile", "project", "version"]}\n    identity.update(nspect_id="NSPECT-BE6H-WKN4", pipeline_id=pipeline_id,\n                    job_id=job_id, scanner_sdk="nv-pulse==0.8.6")\n    # SDK diagnostic logs/exceptions must never reveal its API key, which is\n    # obtained in this subprocess and never passed via argv or written to disk.\n    logging.disable(logging.CRITICAL)\n    stage = "initialize_official_sdk"\n    try:\n        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):\n            from pulse.utilities.api_requests import verify_nspect_id_and_retrive_info\n            from pulse.oss.blackduck import Project\n            from pulse.oss.blackduck.project import BomScanStrategy\n            from pulse.oss.blackduck.api.api import BlackDuckDataHandler\n            from pulse.sbom import ReportProvider, Director\n            from pulse.sbom.models import Configure\n            from pulse.errors import InventoryNotUpdatedException, PulseScanStatusFailure\n\n            stage = "verify_existing_nspect_registration"\n            verified = verify_nspect_id_and_retrive_info(\n                "NSPECT-BE6H-WKN4", token,\n                "ssh://git@gitlab-master.nvidia.com:12051/srl/cpp/controllers.git",\n                BASE, str(uuid.uuid4()))\n            api_key = verified.get("api-token", "")\n            if not api_key:\n                raise ValueError("No delegated Black Duck credential returned")\n            backend = Project(url=Project.URL_DEFAULT, api_key=api_key,\n                              project=expected, project_version=request["version"],\n                              SOURCE="c-cpp-scan", bom_scan_strategy=BomScanStrategy.NOOP,\n                              path="")\n            data = BlackDuckDataHandler(bd_api_key=api_key, hub_url=backend.url)\n            identity.update(backend_project=backend.project, backend_version=backend.version)\n\n            def status():\n                try:\n                    scan = backend.check_project_scan_status(backend.scan_name, 1)\n                except PulseScanStatusFailure:\n                    # Processing/failed status is recorded as unresolved; this\n                    # callback never resubmits or retries the scanner.\n                    scan = "NOT_COMPLETE"\n                try:\n                    bom = data.check_bom_status(backend.project, backend.version)\n                except InventoryNotUpdatedException:\n                    bom = "PROCESSING"\n                return {"scan": scan, "bom": bom}\n\n            def sbom():\n                nonlocal stage\n                stage = "read_existing_component_match_evidence"\n                save_component_match_evidence(output, data, backend, (token, api_key))\n                stage = "export_existing_cpp_inventory"\n                config = Configure.default()\n                if verified.get("disclaimers-property-name") and verified.get("disclaimers-text"):\n                    config = Configure(term_of_agreement_name=verified["disclaimers-property-name"],\n                                       term_of_agreement_text=verified["disclaimers-text"])\n                return json.loads(Director(ReportProvider(token=api_key, base_url=backend.url)).create_report_from_bd(\n                    "NSPECT-BE6H-WKN4", expected, request["version"],\n                    backend.project, backend.version, config=config))\n\n            stage = "export_existing_cpp_inventory"\n            result = collect(output, identity, status=status, export_sbom=sbom,\n                             export_findings=lambda: data.create_vulnerability_report(\n                                 backend.project, backend.version, 3),\n                             cleanup=lambda: data.delete_version_and_project(\n                                 project_name=backend.project, version_name=backend.version),\n                             forbidden=(token, api_key))\n        print(json.dumps({"state": result["state"], "component_count": result["component_count"],\n                          "finding_count": result["finding_count"], "official_completion": "not_inferred"}))\n        # No exceptions, allowlists or risk decisions are manufactured. Any\n        # exported findings remain for review rather than auto-clearing the job.\n        return 2 if result["finding_count"] else 0\n    except Exception as error:\n        output.mkdir(parents=True, exist_ok=True)\n        atomic_json(output / "inventory-export-error.json",\n                    {"stage": stage, "exception_type": type(error).__name__,\n                     "scan_resubmitted": False, "retry_requires_reconciliation": True,\n                     "official_completion": "not_inferred"})\n        print("C++ inventory export did not complete; inspect the saved scoped receipt. No scan resubmitted.")\n        return 1\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
+      COLLECTOR_SOURCE = '"""Proposed remote post-scan collector using pinned official Pulse SDK APIs.\n\nThis module imports no scanner or authentication library until its remote entry\npoint is called. Local validation uses injected fake callbacks only.\n"""\nimport contextlib\nimport hashlib\nimport io\nimport json\nimport logging\nimport os\nfrom pathlib import Path\nimport re\nimport sys\nimport time\nimport uuid\n\nBASE = os.environ["CI_COMMIT_SHA"]\nif len(BASE) != 40 or any(c not in "0123456789abcdef" for c in BASE):\n    raise SystemExit("A full immutable pipeline commit is required.")\n\n\ndef atomic_json(path, value, forbidden=()):\n    text = json.dumps(value, indent=2) + "\\n"\n    if any(secret and secret in text for secret in forbidden):\n        raise ValueError("Credential detected in proposed output; output refused")\n    temporary = path.with_suffix(path.suffix + ".tmp")\n    temporary.write_text(text)\n    temporary.replace(path)\n\n\ndef save_component_match_evidence(output, data, backend, forbidden=()):\n    """Retain the normal BOM and both review views through GET-only SDK calls.\n\n    get_items owns pagination. Materialize every collection before labelling\n    the snapshots complete; iterator errors must not create partial snapshots.\n    The unfiltered review view retains low-score and future review categories.\n    It does not confirm matches or change the server\'s visibility defaults.\n    """\n    component_rows = list(data.get_project_components(\n        backend.project, backend.version, confirm_unknown_versions=False))\n    project_row = data.get_project_by_name(backend.project)\n    version_row = data.get_project_version_by_name(project_row, backend.version)\n    version_href = version_row.get("_meta", {}).get("href", "")\n    if not version_href.startswith(backend.url.rstrip("/") + "/api/projects/"):\n        raise ValueError("Unexpected existing backend version URL")\n    review_url = version_href.rstrip("/") + "/review-components"\n    headers = {"Accept": "application/vnd.blackducksoftware.bill-of-materials-5+json"}\n    review_rows = list(data.hub.get_items(\n        review_url, params={"filter": "bomMatchReviewType:UNKNOWN_VERSION"},\n        headers=headers))\n    all_review_rows = list(data.hub.get_items(review_url, headers=headers))\n    output = Path(output)\n    output.mkdir(parents=True, exist_ok=True)\n    atomic_json(output / "backend-components.json", {\n        "source": "official Black Duck normal components GET",\n        "items": component_rows, "complete": True,\n        "unknown_versions_confirmed": False}, forbidden)\n    atomic_json(output / "backend-review-components.json", {\n        "source": "official Black Duck review-components GET",\n        "filter": "bomMatchReviewType:UNKNOWN_VERSION",\n        "items": review_rows, "complete": True,\n        "unknown_versions_confirmed": False}, forbidden)\n    atomic_json(output / "backend-match-review-components.json", {\n        "source": "official Black Duck review-components GET",\n        "filter": None, "items": all_review_rows, "complete": True,\n        "components_confirmed": False}, forbidden)\n\n\ndef collect(output, identity, *, status, export_sbom, export_findings, import_inventory,\n            forbidden=(), sleep=time.sleep, attempts=20):\n    """Persist raw exports, retain the backend, then submit one native inventory import.\n\n    Callbacks must address exactly identity\'s unique job-scoped backend project.\n    The import callback queues native inventory processing; it never changes dispositions.\n    """\n    output = Path(output)\n    output.mkdir(parents=True, exist_ok=True)\n    receipt = {**identity, "state": "waiting_for_existing_inventory",\n               "scan_submission": False, "cleanup_attempted": False,\n               "official_completion": "not_inferred"}\n    receipt_path = output / "inventory-export.json"\n    if receipt_path.exists():\n        previous = json.loads(receipt_path.read_text())\n        if previous.get("nspect_import", {}).get("attempted"):\n            raise ValueError("Existing native import attempt requires readback, not redispatch")\n    receipt["nspect_import"] = {"state": "not_submitted", "attempted": False}\n    atomic_json(receipt_path, receipt, forbidden)\n    for attempt in range(attempts):\n        current = status()\n        receipt["processing_status"] = current\n        atomic_json(receipt_path, receipt, forbidden)\n        if current == {"scan": "SCAN_COMPLETE", "bom": "UP_TO_DATE"}:\n            break\n        if current.get("bom") == "UP_TO_DATE_WITH_ERRORS":\n            raise ValueError("BOM completed with errors; coverage remains unresolved")\n        if attempt + 1 == attempts:\n            raise TimeoutError("Existing scan/BOM still processing; no scan resubmitted")\n        sleep(15)\n\n    sbom = export_sbom()\n    if not isinstance(sbom, dict) or sbom.get("bomFormat") != "CycloneDX":\n        raise ValueError("Expected official CycloneDX export")\n    components = sbom.get("components")\n    if not isinstance(components, list) or not components:\n        raise ValueError("Empty or missing component inventory; coverage unresolved")\n    if any(not isinstance(c, dict) or not c.get("name") for c in components):\n        raise ValueError("Malformed component inventory")\n    atomic_json(output / "sbom.cdx.json", sbom, forbidden)\n    receipt.update(state="sbom_saved", component_count=len(components))\n    atomic_json(receipt_path, receipt, forbidden)\n\n    findings = export_findings()\n    if not isinstance(findings, dict) or findings.get("status") != "COMPLETE":\n        raise ValueError("Vulnerability report incomplete; keep backend evidence")\n    if not isinstance(findings.get("data"), list):\n        raise ValueError("Vulnerability report missing findings array")\n    atomic_json(output / "cpp-vulnerabilities.json", findings, forbidden)\n    receipt.update(state="both_exports_saved", finding_count=len(findings["data"]),\n                   files={name: hashlib.sha256((output / name).read_bytes()).hexdigest()\n                          for name in ["sbom.cdx.json", "cpp-vulnerabilities.json"]})\n    atomic_json(receipt_path, receipt, forbidden)\n    # Keep the exact backend available for asynchronous nSpect ingestion.\n    # Persist an attempt before calling the official helper; uncertain outcomes\n    # must be reconciled using this receipt rather than submitted again.\n    receipt.update(state="exports_saved_backend_retained", cleanup_completed=False,\n                   coverage="core_cpp_only_component_and_release_reconciliation_required",\n                   findings="review_required" if findings["data"] else "none_in_export")\n    receipt["nspect_import"] = {"state": "dispatching", "attempted": True,\n                               "completion": "not_established"}\n    atomic_json(receipt_path, receipt, forbidden)\n    try:\n        task_id = import_inventory()\n        if not isinstance(task_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,100}", task_id):\n            raise ValueError("Native import acknowledgement has no usable task ID")\n    except Exception as error:\n        receipt["nspect_import"].update(state="outcome_unknown",\n                                       error_type=type(error).__name__,\n                                       retry_requires_reconciliation=True)\n        atomic_json(receipt_path, receipt, forbidden)\n        raise ValueError("Native import outcome requires readback; backend retained") from None\n    receipt["nspect_import"].update(state="submitted", task_id=task_id)\n    receipt["state"] = "exports_saved_native_import_submitted"\n    atomic_json(receipt_path, receipt, forbidden)\n    return receipt\n\n\ndef main():\n    import os\n    request = json.loads(Path(sys.argv[1]).read_text())\n    pipeline_id = os.environ.get("CI_PIPELINE_ID", "")\n    job_id = os.environ.get("CI_JOB_ID", "")\n    profile = request["profile"]\n    expected = "srl-controllers-NSPECT-BE6H-WKN4-" + profile + "-" + pipeline_id + "-" + job_id\n    if (not pipeline_id.isdigit() or not job_id.isdigit()\n            or not re.fullmatch(r"[a-z0-9_]+", profile)\n            or request["source_commit"] != BASE\n            or request["project"] != expected\n            or request["version"] != "0.12.0-" + BASE):\n        raise SystemExit("Unexpected collector scope; no native import allowed")\n    token = os.environ.get("PULSE_BEARER_TOKEN", "")\n    if (os.environ.get("CI_PROJECT_ID") != "160347"\n            or os.environ.get("CI_COMMIT_BRANCH") != "main"\n            or os.environ.get("CI_COMMIT_REF_PROTECTED") != "true"\n            or os.environ.get("CI_PIPELINE_SOURCE") not in {"api", "web"}\n            or os.environ.get("CONTROLLERS_OSS_SCAN") != "1"):\n        raise SystemExit("Collector requires the explicitly gated protected job")\n    if not token:\n        raise SystemExit("Existing short-lived Pulse token required")\n    output = Path(request["output"])\n    identity = {k: request[k] for k in ["source_commit", "profile", "project", "version"]}\n    identity.update(nspect_id="NSPECT-BE6H-WKN4", pipeline_id=pipeline_id,\n                    job_id=job_id, scanner_sdk="nv-pulse==0.8.6")\n    # SDK diagnostic logs/exceptions must never reveal its API key, which is\n    # obtained in this subprocess and never passed via argv or written to disk.\n    logging.disable(logging.CRITICAL)\n    stage = "initialize_official_sdk"\n    try:\n        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):\n            from pulse.utilities.api_requests import (verify_nspect_id_and_retrive_info,\n                                                       post_repo_branch_data)\n            from pulse.oss.blackduck import Project\n            from pulse.oss.blackduck.project import BomScanStrategy\n            from pulse.oss.blackduck.api.api import BlackDuckDataHandler\n            from pulse.sbom import ReportProvider, Director\n            from pulse.sbom.models import Configure\n            from pulse.errors import InventoryNotUpdatedException, PulseScanStatusFailure\n\n            stage = "verify_existing_nspect_registration"\n            verified = verify_nspect_id_and_retrive_info(\n                "NSPECT-BE6H-WKN4", token,\n                "ssh://git@gitlab-master.nvidia.com:12051/srl/cpp/controllers.git",\n                BASE, str(uuid.uuid4()))\n            api_key = verified.get("api-token", "")\n            if not api_key:\n                raise ValueError("No delegated Black Duck credential returned")\n            backend = Project(url=Project.URL_DEFAULT, api_key=api_key,\n                              project=expected, project_version=request["version"],\n                              SOURCE="c-cpp-scan", bom_scan_strategy=BomScanStrategy.NOOP,\n                              path="")\n            data = BlackDuckDataHandler(bd_api_key=api_key, hub_url=backend.url)\n            identity.update(backend_project=backend.project, backend_version=backend.version)\n            native_branch_id = verified.get("repo-branch-id")\n            if isinstance(native_branch_id, bool) or not str(native_branch_id).isdigit() or int(native_branch_id) <= 0:\n                raise ValueError("Exact registered source branch required before native import")\n            if profile != "core_cpp":\n                raise ValueError("Native import is scoped to the reviewed core_cpp profile")\n            correlation_id = str(uuid.uuid4())\n            import_body = {"projectName": backend.project,\n                           "projectVersion": backend.version,\n                           "scanName": backend.scan_name,\n                           "allowList": [], "excludeDirectories": [], "internal_oss_dirs": []}\n            identity["native_import_request"] = {\n                "method": "POST",\n                "url": "https://nspect.nvidia.com/pm/api/v1.0/repoBranches/" + str(native_branch_id) + "/updateProjectInventory",\n                "correlation_id": correlation_id, "body": import_body,\n                "source_commit": BASE, "scope": "core_cpp_only",\n                "effects": "Sets Pulse Override; queues inventory update; disables native on-demand scans for this source"}\n\n            def publish_inventory():\n                nonlocal stage\n                stage = "submit_native_inventory"\n                return post_repo_branch_data(\n                    int(native_branch_id), token, backend.project, backend.version,\n                    backend.scan_name, [], [], [], correlation_id)\n\n            def status():\n                try:\n                    scan = backend.check_project_scan_status(backend.scan_name, 1)\n                except PulseScanStatusFailure:\n                    # Processing/failed status is recorded as unresolved; this\n                    # callback never resubmits or retries the scanner.\n                    scan = "NOT_COMPLETE"\n                try:\n                    bom = data.check_bom_status(backend.project, backend.version)\n                except InventoryNotUpdatedException:\n                    bom = "PROCESSING"\n                return {"scan": scan, "bom": bom}\n\n            def sbom():\n                nonlocal stage\n                stage = "read_existing_component_match_evidence"\n                save_component_match_evidence(output, data, backend, (token, api_key))\n                stage = "export_existing_cpp_inventory"\n                config = Configure.default()\n                if verified.get("disclaimers-property-name") and verified.get("disclaimers-text"):\n                    config = Configure(term_of_agreement_name=verified["disclaimers-property-name"],\n                                       term_of_agreement_text=verified["disclaimers-text"])\n                return json.loads(Director(ReportProvider(token=api_key, base_url=backend.url)).create_report_from_bd(\n                    "NSPECT-BE6H-WKN4", expected, request["version"],\n                    backend.project, backend.version, config=config))\n\n            stage = "export_existing_cpp_inventory"\n            result = collect(output, identity, status=status, export_sbom=sbom,\n                             export_findings=lambda: data.create_vulnerability_report(\n                                 backend.project, backend.version, 3),\n                             import_inventory=publish_inventory,\n                             forbidden=(token, api_key))\n        print(json.dumps({"state": result["state"], "component_count": result["component_count"],\n                          "finding_count": result["finding_count"],\n                          "native_import_task_id": result["nspect_import"]["task_id"],\n                          "native_import_completion": "not_established", "official_completion": "not_inferred"}))\n        # No exceptions, allowlists or risk decisions are manufactured. Any\n        # exported findings remain for review rather than auto-clearing the job.\n        return 2 if result["finding_count"] else 0\n    except Exception as error:\n        output.mkdir(parents=True, exist_ok=True)\n        atomic_json(output / "inventory-export-error.json",\n                    {"stage": stage, "exception_type": type(error).__name__,\n                     "scan_resubmitted": False, "retry_requires_reconciliation": True,\n                     "official_completion": "not_inferred"})\n        print("C++ inventory export did not complete; inspect the saved scoped receipt. No scan resubmitted.")\n        return 1\n\n\nif __name__ == "__main__":\n    raise SystemExit(main())\n'
       PROFILES = json.loads('{"core_cpp": {"mode": "cpp", "flags": {}, "expected_components": ["pybind11"], "id": "core_cpp", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "core_python": {"mode": "python", "extras": "build", "expected_components": ["numpy", "pybind11", "setuptools", "setuptools-scm"], "id": "core_python", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "tests_tools": {"mode": "cpp", "flags": {"ENABLE_TESTS": "ON", "ENABLE_TOOLS": "ON", "ENABLE_EXAMPLES": "ON", "CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE": "PRE_TEST"}, "expected_components": ["Eigen", "GoogleTest"], "id": "tests_tools", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "python_ci": {"mode": "python", "extras": "build,ci", "expected_components": ["declared build and ci extras; separate tooling inventory"], "id": "python_ci", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "ur": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_UR_EXAMPLES": "ON"}, "expected_components": ["ur_client_library@a854de920d602300ce7c0fe3bd79655cb85bd678", "pinocchio@ed3bb75ce96cf26e84aebd8b73785407950a0f1f", "Eigen", "Boost", "urdfdom", "console_bridge", "tinyxml2"], "id": "ur", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "flexiv_dual_1_9_1": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_FLEXIV_DUAL_ARM_RDK_EXAMPLE": "ON", "FLEXIV_RDK_VERSION": "1.9.1"}, "expected_components": ["Flexiv RDK 1.9.1", "pinned Flexiv third-party stack; precompiled RDK archive requires separate inventory evidence"], "id": "flexiv_dual_1_9_1", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "franka_0_9_2": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_FRANKA_EXAMPLES": "ON", "LIBFRANKA_VERSION": "0.9.2"}, "extra_apt": ["libpoco-dev"], "expected_components": ["libfranka 0.9.2", "Eigen", "Poco"], "id": "franka_0_9_2", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "franka_0_10_0": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_FRANKA_EXAMPLES": "ON", "LIBFRANKA_VERSION": "0.10.0"}, "extra_apt": ["libpoco-dev"], "expected_components": ["libfranka 0.10.0", "Eigen", "Poco", "pinocchio@ed3bb75ce96cf26e84aebd8b73785407950a0f1f"], "id": "franka_0_10_0", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "franka_0_15_3": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_FRANKA_EXAMPLES": "ON", "LIBFRANKA_VERSION": "0.15.3"}, "extra_apt": ["libpoco-dev"], "expected_components": ["libfranka 0.15.3", "Eigen", "Poco", "pinocchio@ed3bb75ce96cf26e84aebd8b73785407950a0f1f"], "id": "franka_0_15_3", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "franka_0_21_3": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_FRANKA_EXAMPLES": "ON", "LIBFRANKA_VERSION": "0.21.3"}, "extra_apt": ["libpoco-dev"], "expected_components": ["libfranka 0.21.3", "Eigen", "Poco", "pinocchio@ed3bb75ce96cf26e84aebd8b73785407950a0f1f"], "id": "franka_0_21_3", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "rizon_1_9_1": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_RIZON_EXAMPLES": "ON", "FLEXIV_RDK_VERSION": "1.9.1"}, "expected_components": ["Flexiv RDK 1.9.1", "exact vendor asset digest and precompiled-library inventory"], "id": "rizon_1_9_1", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "rizon_1_9_2": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_RIZON_EXAMPLES": "ON", "FLEXIV_RDK_VERSION": "1.9.2"}, "expected_components": ["Flexiv RDK 1.9.2", "exact vendor asset digest and precompiled-library inventory"], "id": "rizon_1_9_2", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "rizon_1_9_3": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_RIZON_EXAMPLES": "ON", "FLEXIV_RDK_VERSION": "1.9.3"}, "expected_components": ["Flexiv RDK 1.9.3", "exact vendor asset digest and precompiled-library inventory"], "id": "rizon_1_9_3", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}, "rizon_1_9_4": {"mode": "cpp", "flags": {"ENABLE_EXAMPLES": "ON", "ENABLE_RIZON_EXAMPLES": "ON", "FLEXIV_RDK_VERSION": "1.9.4"}, "expected_components": ["Flexiv RDK 1.9.4", "exact vendor asset digest and precompiled-library inventory"], "id": "rizon_1_9_4", "runtime_verified": false, "full_release_coverage": false, "required_for_every_release": false}}')
       PROFILE_ID = os.environ.get("CONTROLLERS_OSS_PROFILE", "")
       if PROFILE_ID not in PROFILES:
@@ -155,6 +156,19 @@ controllers_oss_core_cpp:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -200,7 +214,12 @@ controllers_oss_core_cpp:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -228,12 +247,19 @@ controllers_oss_core_cpp:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -272,8 +298,8 @@ controllers_oss_core_cpp:
                   raise SystemExit("Detect checksum mismatch.")
               run(["sudo", "-n", "install", "-D", "-m", "0644", str(jar), "/var/lib/blackduck/detect.jar"])
               # Standard official CI client-credentials issuer; no secret in argv,
-              # file, report or exception. No update:report request for this run.
-              scopes = "verify:nspectid sourcecode:blackduck public.api:read"
+              # file, report or exception. Native import follows complete raw exports.
+              scopes = "verify:nspectid sourcecode:blackduck public.api:read update:report"
               issuer = "https://4ubglassowmtsi7ogqwarmut7msn1q5ynts62fwnr1i.ssa.nvidia.com/token"
               token_form = urllib.parse.urlencode({"grant_type": "client_credentials", "scope": scopes}).encode()
               basic = base64.b64encode((client_id + ":" + client_secret).encode()).decode()
@@ -352,7 +378,7 @@ controllers_oss_core_cpp:
                   collector_env = {**pulse_env, **{k: os.environ[k] for k in
                       ("CI_PROJECT_ID", "CI_COMMIT_SHA", "CI_COMMIT_BRANCH", "CI_COMMIT_REF_PROTECTED", "CI_PIPELINE_SOURCE",
                        "CI_PIPELINE_ID", "CI_JOB_ID", "CONTROLLERS_OSS_SCAN")}}
-              receipt = {"status": "about_to_start", "source_commit": BASE, "source_archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(), "mode": MODE, "scope": PROFILE_ID, "profile": PROFILE, "expected_components": PROFILE["expected_components"], "full_release_coverage": False, "nspect_report_override": False, "unknown_version_auto_confirmation": False, "command": command, "completion": "not_established"}
+              receipt = {"status": "about_to_start", "source_commit": BASE, "source_archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(), "mode": MODE, "scope": PROFILE_ID, "profile": PROFILE, "expected_components": PROFILE["expected_components"], "full_release_coverage": False, "nspect_report_override": False, "native_inventory_import": "requested_after_complete_exports", "unknown_version_auto_confirmation": False, "command": command, "completion": "not_established"}
               (output / "execution.json").write_text(json.dumps(receipt, indent=2) + "\n")
               (output / "expected-components.json").write_text(json.dumps(PROFILE, indent=2) + "\n")
               # Work outside the source tree: neither scanner runtime nor resolved
@@ -388,7 +414,7 @@ controllers_oss_core_python:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -425,6 +451,7 @@ controllers_oss_core_python:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -446,7 +473,7 @@ controllers_oss_core_python:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -524,6 +551,19 @@ controllers_oss_core_python:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -569,7 +609,12 @@ controllers_oss_core_python:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -597,12 +642,19 @@ controllers_oss_core_python:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -760,7 +812,7 @@ controllers_oss_tests_tools:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -924,6 +976,7 @@ controllers_oss_tests_tools:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -945,7 +998,7 @@ controllers_oss_tests_tools:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -1023,6 +1076,19 @@ controllers_oss_tests_tools:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -1068,7 +1134,12 @@ controllers_oss_tests_tools:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -1096,12 +1167,19 @@ controllers_oss_tests_tools:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -1256,7 +1334,7 @@ controllers_oss_python_ci:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -1293,6 +1371,7 @@ controllers_oss_python_ci:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -1314,7 +1393,7 @@ controllers_oss_python_ci:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -1392,6 +1471,19 @@ controllers_oss_python_ci:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -1437,7 +1529,12 @@ controllers_oss_python_ci:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -1465,12 +1562,19 @@ controllers_oss_python_ci:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -1625,7 +1729,7 @@ controllers_oss_ur:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -1789,6 +1893,7 @@ controllers_oss_ur:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -1810,7 +1915,7 @@ controllers_oss_ur:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -1888,6 +1993,19 @@ controllers_oss_ur:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -1933,7 +2051,12 @@ controllers_oss_ur:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -1961,12 +2084,19 @@ controllers_oss_ur:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -2121,7 +2251,7 @@ controllers_oss_flexiv_dual_1_9_1:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -2158,6 +2288,7 @@ controllers_oss_flexiv_dual_1_9_1:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -2179,7 +2310,7 @@ controllers_oss_flexiv_dual_1_9_1:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -2257,6 +2388,19 @@ controllers_oss_flexiv_dual_1_9_1:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -2302,7 +2446,12 @@ controllers_oss_flexiv_dual_1_9_1:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -2330,12 +2479,19 @@ controllers_oss_flexiv_dual_1_9_1:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -2490,7 +2646,7 @@ controllers_oss_franka_0_9_2:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -2527,6 +2683,7 @@ controllers_oss_franka_0_9_2:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -2548,7 +2705,7 @@ controllers_oss_franka_0_9_2:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -2626,6 +2783,19 @@ controllers_oss_franka_0_9_2:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -2671,7 +2841,12 @@ controllers_oss_franka_0_9_2:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -2699,12 +2874,19 @@ controllers_oss_franka_0_9_2:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -2859,7 +3041,7 @@ controllers_oss_franka_0_10_0:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -2896,6 +3078,7 @@ controllers_oss_franka_0_10_0:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -2917,7 +3100,7 @@ controllers_oss_franka_0_10_0:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -2995,6 +3178,19 @@ controllers_oss_franka_0_10_0:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -3040,7 +3236,12 @@ controllers_oss_franka_0_10_0:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -3068,12 +3269,19 @@ controllers_oss_franka_0_10_0:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -3228,7 +3436,7 @@ controllers_oss_franka_0_15_3:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -3265,6 +3473,7 @@ controllers_oss_franka_0_15_3:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -3286,7 +3495,7 @@ controllers_oss_franka_0_15_3:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -3364,6 +3573,19 @@ controllers_oss_franka_0_15_3:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -3409,7 +3631,12 @@ controllers_oss_franka_0_15_3:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -3437,12 +3664,19 @@ controllers_oss_franka_0_15_3:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -3597,7 +3831,7 @@ controllers_oss_franka_0_21_3:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -3634,6 +3868,7 @@ controllers_oss_franka_0_21_3:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -3655,7 +3890,7 @@ controllers_oss_franka_0_21_3:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -3733,6 +3968,19 @@ controllers_oss_franka_0_21_3:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -3778,7 +4026,12 @@ controllers_oss_franka_0_21_3:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -3806,12 +4059,19 @@ controllers_oss_franka_0_21_3:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -3966,7 +4226,7 @@ controllers_oss_rizon_1_9_1:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -4003,6 +4263,7 @@ controllers_oss_rizon_1_9_1:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -4024,7 +4285,7 @@ controllers_oss_rizon_1_9_1:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -4102,6 +4363,19 @@ controllers_oss_rizon_1_9_1:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -4147,7 +4421,12 @@ controllers_oss_rizon_1_9_1:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -4175,12 +4454,19 @@ controllers_oss_rizon_1_9_1:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -4335,7 +4621,7 @@ controllers_oss_rizon_1_9_2:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -4372,6 +4658,7 @@ controllers_oss_rizon_1_9_2:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -4393,7 +4680,7 @@ controllers_oss_rizon_1_9_2:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -4471,6 +4758,19 @@ controllers_oss_rizon_1_9_2:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -4516,7 +4816,12 @@ controllers_oss_rizon_1_9_2:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -4544,12 +4849,19 @@ controllers_oss_rizon_1_9_2:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -4704,7 +5016,7 @@ controllers_oss_rizon_1_9_3:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -4741,6 +5053,7 @@ controllers_oss_rizon_1_9_3:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -4762,7 +5075,7 @@ controllers_oss_rizon_1_9_3:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -4840,6 +5153,19 @@ controllers_oss_rizon_1_9_3:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -4885,7 +5211,12 @@ controllers_oss_rizon_1_9_3:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -4913,12 +5244,19 @@ controllers_oss_rizon_1_9_3:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -5073,7 +5411,7 @@ controllers_oss_rizon_1_9_4:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -5110,6 +5448,7 @@ controllers_oss_rizon_1_9_4:
       import platform
       import shlex
       import shutil
+      import ssl
       import subprocess
       import sys
       import tarfile
@@ -5131,7 +5470,7 @@ controllers_oss_rizon_1_9_4:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -5209,6 +5548,19 @@ controllers_oss_rizon_1_9_4:
               raise SystemExit("Only explicit API/web pipelines are supported.")
           if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
+          # Validate trust before reading credentials or making HTTPS requests.
+          ca_revision = subprocess.check_output(
+              ["dpkg-query", "-W", "-f=${Version}", "ca-certificates"],
+              text=True, env={"PATH": "/usr/bin:/bin"}).strip()
+          if subprocess.call(
+              ["dpkg", "--compare-versions", ca_revision, "ge", "20260816ubuntu0.24.04.1"],
+              env={"PATH": "/usr/bin:/bin"}) != 0:
+              raise SystemExit("Rebuild and pin the reviewed image with the Ubuntu CA security update.")
+          roots = ssl.create_default_context().get_ca_certs(binary_form=True)
+          if not roots or any(hashlib.sha256(cert).hexdigest() ==
+                  "86a1ecba089c4a8d3bbe2734c612ba341d813e043cf9e8a862cd5c57a36bbe6b"
+                  for cert in roots):
+              raise SystemExit("The bootstrap CA store still trusts the affected emSign root.")
           client_id = os.environ.pop("SF_CLIENT_ID", "")
           client_secret = os.environ.pop("SF_CLIENT_SECRET", "")
           job_token = os.environ.pop("CI_JOB_TOKEN", "")
@@ -5254,7 +5606,12 @@ controllers_oss_rizon_1_9_4:
               with urllib.request.urlopen(request, timeout=120) as response, archive.open("wb") as destination:
                   shutil.copyfileobj(response, destination)
               with tarfile.open(archive) as source_archive:
-                  source_archive.extractall(work / "source", filter="data")
+                  # Canonical source archives need no links or special files.
+                  # Reject them before extraction, including tarfile link-filter bypasses.
+                  members = source_archive.getmembers()
+                  if any(not (member.isfile() or member.isdir()) for member in members):
+                      raise SystemExit("Source archive must contain only regular files and directories.")
+                  source_archive.extractall(work / "source", members=members, filter="data")
               roots = list((work / "source").iterdir())
               if len(roots) != 1 or not roots[0].is_dir():
                   raise SystemExit("Unexpected archive layout.")
@@ -5282,12 +5639,19 @@ controllers_oss_rizon_1_9_4:
               project_env = work / "project-env"
               for destination in (scanner, project_env):
                   run([sys.executable, "-I", "-m", "venv", str(destination)])
+                  # ensurepip can seed old vendored CA bundles even in an updated image.
+                  run([str(destination / "bin/python"), "-I", "-m", "pip", "install",
+                       "--no-input", "--no-deps",
+                       "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               scanner_python = str(scanner / "bin/python")
               project_python = str(project_env / "bin/python")
               lock = work / "scanner.lock"
               lock.write_text(LOCK)
               run([scanner_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--require-hashes", "--index-url", INDEX, "-r", str(lock)])
               run([scanner_python, "-I", "-m", "pip", "check"])
+              trust_check = "/usr/local/libexec/controllers/check_certificate_trust.py"
+              run([scanner_python, "-I", trust_check, "--pip", "--certifi", "--java-if-present"])
+              run([project_python, "-I", trust_check, "--pip"])
               metadata = tomllib.loads((source / "pyproject.toml").read_text())
               # Resolve only project build requirements in the project environment.
               run([project_python, "-I", "-m", "pip", "install", "--no-input", "--only-binary=:all:", "--index-url", "https://pypi.org/simple", *metadata["build-system"]["requires"]])
@@ -5441,7 +5805,7 @@ controllers_malware_archive:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -5705,7 +6069,7 @@ controllers_malware_auth_diagnostic:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -5836,7 +6200,7 @@ controllers_oss_runtime_check:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
@@ -5885,7 +6249,7 @@ controllers_oss_runtime_check:
       boolean-py==5.0 --hash=sha256:ef28a70bd43115208441b53a045d1549e2f0ec6e3d08a9d142cbc41c1938e8d9
       bytecode==0.17.0 --hash=sha256:64fb10cde1db7ef5cc39bd414ecebd54ba3b40e1c4cf8121ca5e72f170916ff8
       cached-property==1.5.2 --hash=sha256:df4f613cf7ad9a588cc381aaf4a512d26265ecebd5eb9e1ba12f1319eb85a6a0
-      certifi==2026.2.25 --hash=sha256:027692e4402ad994f1c42e52a4997a9763c646b73e4096e4d5d6db8af1d6f0fa
+      certifi==2026.10.19 --hash=sha256:42d35340cc5b9ba78e818ddbff0c5b1c2b779de448a340fd1b989f5fa8670e1b
       cffi==2.0.0 --hash=sha256:3e17ed538242334bf70832644a32a7aae3d83b57567f9fd60a26257e992b79ba
       chardet==4.0.0 --hash=sha256:f864054d66fd9118f2e67044ac8981a54775ec5b67aed0441892edb553d21da5
       charset-normalizer==3.4.7 --hash=sha256:5649fd1c7bade02f320a462fdefd0b4bd3ce036065836d4f42e0de958038e116
@@ -5963,6 +6327,9 @@ controllers_oss_runtime_check:
           if platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
               raise SystemExit("Expected the existing Linux x86_64 / Python 3.12 Controllers image.")
 
+          subprocess.run(
+              [sys.executable, "-I", "/usr/local/libexec/controllers/check_certificate_trust.py"],
+              check=True, env={"PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"})
           with tempfile.TemporaryDirectory(prefix="controllers-oss-runtime-") as temporary:
               work = Path(temporary)
               # No inherited tokens, project Python paths, pip configuration or user files.
@@ -6012,6 +6379,8 @@ controllers_oss_runtime_check:
               scanner = work / "pulse"
               run([sys.executable, "-I", "-m", "venv", str(scanner)])
               python = str(scanner / "bin/python")
+              run([python, "-I", "-m", "pip", "install", "--no-input", "--no-deps",
+                   "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"])
               requirements = work / "pulse-runtime.lock"
               requirements.write_text(LOCK)
               run([
@@ -6020,6 +6389,8 @@ controllers_oss_runtime_check:
                   "--requirement", str(requirements),
               ])
               run([python, "-I", "-m", "pip", "check"])
+              run([python, "-I", "/usr/local/libexec/controllers/check_certificate_trust.py",
+                   "--pip", "--certifi", "--java-if-present"])
 
               # Import the official CLI and inspect Click metadata only. Invoking the
               # root CLI callback can authenticate, so no Pulse command is executed.
@@ -6069,7 +6440,7 @@ controllers_scan_image_refresh:
     default: false
     variables: false
   image:
-    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:1db80666bcce101e61dd5da433d09e470bca8148a39ccadb6e89dd63c8e2099b
+    name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:605998e2fb37690c571fd62cd508b8ae9b903cd15c4e730ad3baeb090dc7bc9f
     pull_policy: always
   tags: [os-linux, arch-amd64]
   needs: []
