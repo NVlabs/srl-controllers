@@ -12,8 +12,9 @@ test "$VERSION_CODENAME" = noble
 test "$(dpkg --print-architecture)" = amd64
 
 # These are Ubuntu package revisions, including backports, not upstream versions.
-# Vendor references: CVE-2026-19542, USN-8509-1 and USN-8813-1.
-required='libc6 libc6-dev python3.12 libpython3.12t64 libpython3.12-dev libexpat1 libexpat1-dev'
+# Vendor references: CVE-2026-19542, USN-8509-1, USN-8813-1 and
+# https://ubuntu.com/security/CVE-2026-27171 (USN-8706-1).
+required='libc6 libc6-dev python3.12 libpython3.12t64 libpython3.12-dev libexpat1 libexpat1-dev zlib1g zlib1g-dev'
 for package in $required; do
     test "$(dpkg-query -W -f='${Status}' "$package")" = 'install ok installed'
 done
@@ -24,7 +25,7 @@ packages=''
 for package in libc6 libc6-dev libc-bin libc-dev-bin libc-devtools \
     python3.12 python3.12-minimal python3.12-dev libpython3.12t64 \
     libpython3.12-minimal libpython3.12-stdlib libpython3.12-dev \
-    libexpat1 libexpat1-dev expat; do
+    libexpat1 libexpat1-dev expat zlib1g zlib1g-dev; do
     if [ "$(dpkg-query -W -f='${Status}' "$package" 2>/dev/null || :)" = 'install ok installed' ]; then
         packages="$packages $package"
     fi
@@ -40,8 +41,9 @@ printf 'package\tinstalled_version\tminimum_version\tarchitecture\n' > "$evidenc
 for package in $required; do
     case "$package" in
         libc6|libc6-dev) minimum=2.39-0ubuntu8.9; family=2.39-0ubuntu8. ;;
-        python3.12|libpython3.12t64|libpython3.12-dev) minimum=3.12.3-1ubuntu0.15; family=3.12.3-1ubuntu0. ;;
+        python3.12|libpython3.12t64|libpython3.12-dev) minimum=3.12.3-1ubuntu0.17; family=3.12.3-1ubuntu0. ;;
         libexpat1|libexpat1-dev) minimum=2.6.1-2ubuntu0.6; family=2.6.1-2ubuntu0. ;;
+        zlib1g|zlib1g-dev) minimum=1:1.3.dfsg-3.1ubuntu2.2; family=1:1.3.dfsg-3.1ubuntu2. ;;
         *) exit 1 ;;
     esac
     version=$(dpkg-query -W -f='${Version}' "$package")

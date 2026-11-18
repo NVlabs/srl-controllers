@@ -114,15 +114,17 @@ print(f"Selected {len(names)} CUDA tests, including all {len(required)} required
 PY
   env LD_LIBRARY_PATH= ctest --test-dir "$test_build_dir" --output-on-failure \
     --no-tests=error -R "$cuda_test_regex" --output-junit "$artifact_dir/cuda-tests.xml"
-  python3 - "$selected_tests" "$artifact_dir/cuda-tests.xml" <<'PY'
+  python3 - "$selected_tests" "$artifact_dir/cuda-tests.xml" "$project_dir/tools/verify_cuda_python_tests.py" <<'PY'
 import json
+from pathlib import Path
 import re
+import runpy
 import sys
-import xml.etree.ElementTree as ET
 
 with open(sys.argv[1], encoding="utf-8") as source:
     selected = {test["name"]: test for test in json.load(source)["tests"]}
-cases = ET.parse(sys.argv[2]).getroot().findall(".//testcase")
+read_report = runpy.run_path(sys.argv[3])["read_report"]
+cases = read_report(Path(sys.argv[2])).findall(".//testcase")
 if not selected or len(cases) != len(selected) or {case.get("name") for case in cases} != set(selected):
     raise SystemExit("CUDA test execution did not match the nonempty selection.")
 for case in cases:

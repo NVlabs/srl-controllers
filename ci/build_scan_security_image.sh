@@ -138,9 +138,10 @@ with (results / "minimum-versions.tsv").open() as handle:
     packages = list(csv.DictReader(handle, delimiter="\t"))
 minimums = {
     "libc6": "2.39-0ubuntu8.9", "libc6-dev": "2.39-0ubuntu8.9",
-    "python3.12": "3.12.3-1ubuntu0.15", "libpython3.12t64": "3.12.3-1ubuntu0.15",
-    "libpython3.12-dev": "3.12.3-1ubuntu0.15",
+    "python3.12": "3.12.3-1ubuntu0.17", "libpython3.12t64": "3.12.3-1ubuntu0.17",
+    "libpython3.12-dev": "3.12.3-1ubuntu0.17",
     "libexpat1": "2.6.1-2ubuntu0.6", "libexpat1-dev": "2.6.1-2ubuntu0.6",
+    "zlib1g": "1:1.3.dfsg-3.1ubuntu2.2", "zlib1g-dev": "1:1.3.dfsg-3.1ubuntu2.2",
 }
 assert len(packages) == len(minimums) and {row["package"] for row in packages} == set(minimums)
 for row in packages:

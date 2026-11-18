@@ -12,11 +12,32 @@ and their collectors use that same SHA. Malware packaging verifies the candidate
 Git tree and the downstream job checks its archive hash and candidate identity.
 Later branch movement does not change the source attributed to an existing run.
 
-All 14 OSS bootstrap jobs inspect the complete source archive before extracting it.
-Only regular files and directories are accepted; symlinks, hardlinks and special
-files are rejected before any member is written. The existing `data` extraction
-filter remains enabled for path and metadata checks. This guards the bootstrap
-archive path; it does not patch the Python runtime or establish a finding disposition.
+All 14 OSS bootstrap jobs fetch the exact pipeline commit into an empty directory
+using Git, then verify `HEAD`. They do not download or extract a source tar archive.
+The malware job still constructs and verifies its input archive without extracting
+it to the filesystem. Historical reports retain their original producer behavior.
+
+The CI HTTPS bootstrap uses the reviewed `ci/secure_http.py`, embedded unchanged in
+15 job definitions. Curl handles response framing; credentials enter its configuration
+through stdin and responses stay in memory. Requests containing credentials cannot
+redirect. Downloads may redirect only over HTTPS and retain their existing hash checks.
+The helper limits transfer size/time and passes neither secrets nor diagnostics in
+its command line or exceptions. It does not patch the system Python interpreter.
+
+The isolated runtime check and all OSS profiles retain actual runtime security
+evidence from `ci/check_scan_runtime.py`. Its network subprocess environment fixes
+`LOCALDOMAIN=.` and `LANGUAGE=C`. It checks nscd absence, the actual architecture and
+Python installation, and invocable root-owned privileged ELF loader paths. TinyXML2
+assertion-symbol evidence is retained when that library is installed. These are
+technical checks for the inspected CI context, not a claim about every user's OS
+or a new PIC approval.
+
+Both CUDA JUnit consumers use the bounded reader in
+`tools/verify_cuda_python_tests.py`. Only UTF-8 XML is accepted, DTDs are rejected,
+and parsing runs in a credential-free child with a five-second wall limit, Linux
+CPU/address-space limits and node/depth bounds. The parent builds Elements from
+generated JSON and never reparses XML. Fixed bundled URDF readers have a separate
+input boundary; no general Expat patch or unrestricted XML-safety claim is made.
 
 ## Prepared capabilities
 
@@ -26,7 +47,7 @@ SSA diagnostic and scanner runtime check. It changes their branch and source bin
 not scanner versions, reports, dependency pins or finding dispositions.
 
 Only explicit `web`/`api` pipelines on the protected `main` branch are accepted.
-Exactly one of the five mode flags must be `1`; an OSS mode also needs a valid profile. Pushes,
+Exactly one of the six mode flags must be `1`; an OSS mode also needs a valid profile. Pushes,
 schedules, merge requests, other branches and ambiguous selections create no pipeline.
 Every selected job is manual, including malware archive preparation. Retries are zero.
 `main` uses the consolidated isolated scan workflow; normal application CI remains in
@@ -50,7 +71,7 @@ Destination:
 [Run pipeline](https://gitlab-master.nvidia.com/srl/cpp/controllers/-/pipelines/new?ref=main)
 
 Branch: `main`. Set only the selected row's variables; leave the
-other four mode flags unset. No environment selection or new credentials are required
+other five mode flags unset. No environment selection or new credentials are required
 by this consolidation. Existing variable delivery and scopes still require verification
 before any authorized run.
 
@@ -61,6 +82,7 @@ before any authorized run.
 | SSA diagnostic | `CONTROLLERS_MALWARE_AUTH_DIAGNOSTIC=1` | `controllers_malware_auth_diagnostic` |
 | Runtime check | `CONTROLLERS_OSS_RUNTIME_CHECK=1` | `controllers_oss_runtime_check` |
 | CI image security refresh | `CONTROLLERS_SCAN_IMAGE_REFRESH=1` | `controllers_scan_image_refresh` |
+| Existing OSS file locations | `CONTROLLERS_OSS_SCOPE_DIAGNOSTIC=1`, `CONTROLLERS_SCOPE_SOURCE_SHA=<existing source SHA>`, `CONTROLLERS_SCOPE_PIPELINE_ID=<existing scan pipeline>`, `CONTROLLERS_SCOPE_JOB_ID=<existing scan job>` | `controllers_oss_scope_diagnostic` |
 
 Valid OSS profiles:
 
@@ -92,6 +114,82 @@ Verify the resulting main commit is registered before starting the job. Confirm 
 imported components/findings through native readback before any separately authorized
 cleanup. This is only the `core_cpp` profile, not full release coverage; other profiles
 keep their current behavior and are not automatically published over this inventory.
+
+## Non-shipped package scope
+
+The raw compiler-capture inventory includes system packages from the CI image.
+Their presence in that inventory does not establish that their installations are
+bundled in the source-only release. Keep raw exports and their original candidate
+identities. Assess packages distributed by optional examples separately.
+
+The existing-scan location diagnostic reads one explicitly selected, retained
+`core_cpp` backend. Its source SHA and original pipeline/job are evidence selectors,
+separate from the current commit running the reader. It reuses the existing protected
+SSA connection and pinned Pulse SDK. The only business-data operations are GETs for
+the existing project, version, components and component/origin matched-file collections.
+Authentication and the SDK's normal audit telemetry still occur. It does not build,
+start a scan, create a report, modify a finding, register a source or import inventory.
+Its manual execution and any push require separate authorization.
+
+Use complete package locations from those responses to prepare a root
+`.nspect-allowlist.toml` under the official
+[non-shipped directory procedure](https://nvidia.atlassian.net/wiki/spaces/PRODSEC/pages/2569266896/AllowList)
+and its [directory/regex field reference](https://nvidia.atlassian.net/wiki/spaces/PRODSEC/pages/2569284526/nSpect+Allowlist+for+OSS+vulnerabilities+and+Secrets).
+Use the [official validator](https://nspect.nvidia.com/tools/validate/allowlist).
+An absent file keeps exclusions empty. The core C++ collector uses the pinned official
+Pulse parser and passes applicable directory entries to the existing import helper;
+the receipt retains their exact values and policy hash. Raw local SBOM/vulnerability
+exports remain unfiltered; native filtered inventory must be checked after ingestion.
+This location-only hook rejects vulnerability overrides and ownership reassignment.
+
+The prepared policy contains seven program-scoped groups for the CI installations
+of glibc, libc6, libc6-dev, libgcc-13-dev, libstdc++-13-dev, libgcc-s1 and
+linux-libc-dev. Their package versions match the retained installed-package inventory.
+The verified source archive at `37e73415140a68d67f8639f56aa640784eef9537`
+contained 322 tracked source files and no native binaries or OS packages. This
+establishes the scope of that source release, not the contents of future user builds.
+Keep required third-party source and optional-example dependencies visible.
+
+[Diagnostic job 553471076](https://gitlab-master.nvidia.com/srl/cpp/controllers/-/jobs/553471076)
+read all seven origin collections completely: 250 file records with no blank paths.
+The policy uses 253 exact regexes: the observed file locations, the archive-context and
+SDK report forms of the one archived glibc location, and two package-location
+aliases present in the original retained vulnerability export. It does not append
+directory suffixes to files or exclude `/usr/include/`, `/usr/lib/` or `/lib/`.
+Each regex escapes one literal location and ends with `$(?!\n)`. The pinned Pulse
+matcher lowercases patterns and uses multiline matching; this end guard prevents
+prefix/newline matches without using an escape whose meaning changes on lowercasing.
+The archived file keeps its archive identity rather than adding a bare-path rule.
+The collector passes the policy entries to the existing native import, preserves
+unfiltered raw exports and records the policy digest. This does not retroactively
+filter an existing report merely because the policy is committed.
+
+The original scan remains attributed to source `37e7341`, pipeline `79636715`,
+job `531134192`; the diagnostic ran reader configuration `8b6a952`. Its current
+backend has nine components, whereas the retained original export has eight.
+In particular, the old composite C++ library mapping is now split into GCC and
+GNU Standard C++ Library. The read-only diagnostic did not make that change.
+
+All locations for an excluded package must be accounted for. A blank/missing location
+is unresolved, not a wildcard. Do not remove a package by name, delete the location or
+exclude a broad system root to make its row disappear. Check proposed paths against
+the other components, including genuinely distributed third-party source. A scope
+policy does not establish vulnerability clearance, OSRB coverage or Legal approval.
+Local validation must check every observed target location, all other component
+locations and suffix/newline near-misses with the pinned official parser and matcher.
+The historical glibc vulnerability export also contains a blank location. Preserve
+it and report that historical coverage as incomplete: the complete matched-file
+collection does not erase a blank in a different report. Official browser-validator
+acceptance and native post-ingestion readback remain separate from local checks.
+On 17 November 2026 UTC, the official browser validator returned
+`Validations Successful` / `Content is having valid format` for the complete
+17,896-byte policy with SHA-256
+`4b324af9fb27e9808b0eeb82ea9da1a9a2a3a6d2c09369f77f46f110f663a9ec`.
+Browser input readback matched that exact file. This establishes format acceptance;
+the policy has not been applied to existing inventory or scan results.
+Commit/push, source registration, new reports/imports and scans require their
+separately authorized execution packet. The current source-only archive evidence
+does not cover a future binary release.
 
 ## Record continuity
 
@@ -128,11 +226,12 @@ containing that Dockerfile and `ci/refresh_scan_system_packages.sh`.
 The build context also includes `ci/refresh_certificate_trust.sh` and
 `ci/check_certificate_trust.py` for the certificate-security update below. The same
 package checks run at the end of the full `docker/controllers.dockerfile` CI stage.
-It upgrades installed Ubuntu noble/amd64 libc, Python 3.12 and Expat package
+It upgrades installed Ubuntu noble/amd64 libc, Python 3.12, Expat and zlib package
 families, then uses complete Debian revisions and `dpkg --compare-versions` to
-verify at least `2.39-0ubuntu8.9`, `3.12.3-1ubuntu0.15` and
-`2.6.1-2ubuntu0.6`, respectively. These minima address the reviewed fixable High
-rows; they do not clear unrelated or later findings.
+verify at least `2.39-0ubuntu8.9`, `3.12.3-1ubuntu0.17`,
+`2.6.1-2ubuntu0.6` and `1:1.3.dfsg-3.1ubuntu2.2`, respectively. The zlib minimum
+addresses CVE-2026-27171 using the Ubuntu noble fix from USN-8706-1. These minima
+address the reviewed fixes; they do not clear unrelated or later findings.
 
 The remote Docker route reuses the previous successful `build_ci_images` job's
 Linux runner tags and daemon API fallback. It does not restore the inherited
@@ -151,6 +250,15 @@ reports and finding decisions attributed to their original candidates. Image
 building and candidate pinning do not establish vulnerability or PLC completion.
 
 ## Certificate trust update
+
+The internal image built from `fecb14bbe1dd0eeeceeb004935c3757b0beb2429` in
+[job 530831637](https://gitlab-master.nvidia.com/srl/cpp/controllers/-/jobs/530831637)
+was verified against the registry digest
+`sha256:d2d9c10fb18b638925a34d42caf9ad47a2c8af7dcbaa7121920b60440e59906e`.
+It contains Ubuntu zlib `1:1.3.dfsg-3.1ubuntu2.3`, above the reviewed fixed revision,
+and retains the checked libc, Python, Expat and certificate-trust updates. The
+workflow pins this observed digest. Image verification does not resolve the old
+scan's findings or establish release approval; assess the resulting candidate.
 
 The local preparation for CVE-2026-115557 updates Ubuntu's `ca-certificates` to
 at least `20260816ubuntu0.24.04.1`, refreshes installed NSS packages, and checks
