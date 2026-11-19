@@ -1720,7 +1720,7 @@ controllers_oss_ur:
   image:
     name: gitlab-master.nvidia.com:5005/srl/cpp/controllers/ci@sha256:d2d9c10fb18b638925a34d42caf9ad47a2c8af7dcbaa7121920b60440e59906e
     pull_policy: always
-  tags: [os-linux, arch-amd64]
+  tags: [ipp-group-srl]
   needs: []
   dependencies: []
   before_script: []
@@ -1988,7 +1988,12 @@ controllers_oss_ur:
               raise SystemExit("Wrong project, branch, protection or explicit scan gate.")
           if os.environ.get("CI_PIPELINE_SOURCE") not in {"api", "web"}:
               raise SystemExit("Only explicit API/web pipelines are supported.")
-          if not Path("/.dockerenv").is_file() or platform.machine() != "x86_64" or sys.version_info[:2] != (3, 12):
+          # IPP uses Kubernetes pods, which need not have Docker's marker file.
+          ipp_pod = (os.environ.get("CI_RUNNER_ID") == "1397238"
+                     and bool(os.environ.get("KUBERNETES_SERVICE_HOST")))
+          if (not (Path("/.dockerenv").is_file() or ipp_pod)
+                  or platform.system() != "Linux" or platform.machine() != "x86_64"
+                  or sys.version_info[:2] != (3, 12)):
               raise SystemExit("Expected disposable Controllers Linux amd64/Python3.12 container.")
           # Validate trust before reading credentials or making HTTPS requests.
           ca_revision = subprocess.check_output(

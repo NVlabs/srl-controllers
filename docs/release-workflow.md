@@ -94,6 +94,15 @@ These are available profiles, not a claim that every profile is required or comp
 Determine required coverage from the release configurations and official dashboard
 guidance. All raw findings and candidate-specific limitations remain reviewable.
 
+The `ur` profile selects SRL's IPP CPU runner using `ipp-group-srl`. Its startup
+guard also accepts a Kubernetes pod on the registered IPP runner (`1397238`),
+identified by `CI_RUNNER_ID` and `KUBERNETES_SERVICE_HOST`, alongside the existing
+Docker marker. The protected-main, explicit-mode, disposable-environment,
+Linux/amd64 and Python 3.12 checks remain required. The image digest and scanner
+credentials are unchanged. IPP must provision the runner before the job can start;
+image access, pod permissions and scanner execution still need a completed run.
+Other profiles retain their existing runner selection.
+
 Completion requires the job's artifact identities and contents to match the selected
 candidate, then an assessment of package capture, module coverage, findings and the
 actual official nSpect/PLC activity. A green job alone is not release approval.
