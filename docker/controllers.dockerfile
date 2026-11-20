@@ -82,20 +82,20 @@ RUN sudo -n /bin/sh /tmp/controllers-refresh-system-packages.sh \
 # ----------------------------------------------------------------------------
 # Release Image
 # ----------------------------------------------------------------------------
-# The release image is automatically built in the CI. It is built from the
-# project's base image and has the project's distribution package installed into
-# it. Locally, it should only be built for testing, and it should not be pushed
-# manually to the registry.
+# The release image installs this project's previously built Debian package from
+# the trusted build context. Pass its relative path as DEB_PACKAGE and its exact
+# package version as VERSION. Image publication requires separate authorization.
 FROM base AS release
 
-# Add the SRL apt repository only where the released Debian package is installed.
-RUN echo "deb [arch=amd64 trusted=yes] http://srl-server-01:8000/files/deb stable main" | \
-    sudo tee /etc/apt/sources.list.d/nvidia-srl.list
-
-# Install package
+# Use the local build artifact rather than an unsigned network package source.
+ARG DEB_PACKAGE
 ARG VERSION
-RUN sudo apt-get update && sudo apt-get install -y \
-    nvidia-srl-controllers=$VERSION \
+COPY ${DEB_PACKAGE} /tmp/nvidia-srl-controllers.deb
+RUN test "$(dpkg-deb --field /tmp/nvidia-srl-controllers.deb Package)" = "nvidia-srl-controllers" \
+    && test "$(dpkg-deb --field /tmp/nvidia-srl-controllers.deb Version)" = "${VERSION:?Pass the Debian package version}" \
+    && sudo apt-get update \
+    && sudo apt-get install -y /tmp/nvidia-srl-controllers.deb \
+    && sudo rm -f /tmp/nvidia-srl-controllers.deb \
     && sudo rm -rf /var/lib/apt/lists/*
 
 

@@ -193,6 +193,21 @@ does not cover a future binary release.
 
 ## Record continuity
 
+The Docker `release` target consumes a previously built local Debian package;
+it does not fetch Controllers from the unsigned internal HTTP apt repository.
+For a Linux amd64 CPack build in `_build`, the explicit local test command is:
+
+```bash
+docker build -f docker/controllers.dockerfile --target release \
+  --build-arg DEB_PACKAGE=_build/packages/nvidia-srl-controllers_0.12.0_amd64.deb \
+  --build-arg VERSION=0.12.0 .
+```
+
+Use the actual package path and its exact Debian version if they differ. The
+image checks the package name and version before installation; dependency
+resolution uses the base image's configured package sources. This command is
+documentation, not permission to build or publish an image.
+
 Use existing nSpect `NSPECT-BE6H-WKN4` / `0.12.0`, OSRB `6666725`, export `6667806`,
 the existing NVLabs destination and saved connections. Consolidation does not create
 another registration, ticket, approval, credential or backend disposition.

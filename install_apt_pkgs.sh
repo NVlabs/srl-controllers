@@ -177,6 +177,13 @@ while IFS= read -r line; do
     # Extract PACKAGE name without explicit version
     PACKAGE=$(echo "$PACKAGE" | grep -o -E '^[^=]+')
 
+    # Accept Debian package names and optional architecture qualifiers, never options or shell syntax.
+    if [[ ! "$PACKAGE" =~ ^[a-z0-9][a-z0-9+.-]+(:[a-z0-9][a-z0-9-]*)?$ ]]; then
+        echo -e "${RED}Error: Invalid package name '$PACKAGE'. Skipping.${NC}"
+        EXIT_STATUS=1
+        continue
+    fi
+
     # Extract CONSTRAINTS (everything after the first comma, if present)
     CONSTRAINTS=$(echo "$line" | grep -o -E ',.*' | cut -c2- | tr '\n' ',' | sed 's/,$//')
 
@@ -211,10 +218,9 @@ while IFS= read -r line; do
     fi
 
     if [[ "$INSTALLED_VERSION" == "NOT_INSTALLED" ]]; then
-        INSTALL_CMD="sudo apt install -y $PACKAGE"
-        [[ -n "$EXPLICIT_VERSION" ]] && INSTALL_CMD+="=$EXPLICIT_VERSION"
+        INSTALL_CMD=(sudo apt install -y "$PACKAGE${EXPLICIT_VERSION:+=$EXPLICIT_VERSION}")
         echo -e "${GREEN}Package $PACKAGE is not installed. Installing...${NC}"
-        if ! eval "$INSTALL_CMD"; then
+        if ! "${INSTALL_CMD[@]}"; then
             echo -e "${YELLOW}Warning: Failed to install $PACKAGE${NC}"
             EXIT_STATUS=1
             continue
